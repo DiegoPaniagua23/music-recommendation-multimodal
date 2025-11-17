@@ -1,0 +1,23 @@
+[project]
+name = "music-recommendation-multimodal"
+version = "0.1.0"
+description = "MIR Project: Multimodal Classification and Recommendation System."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=2.2.6",
+    "pandas>=2.3.3",
+    "torch>=2.9.1",
+]
+
+[dependency-groups]
+dev = [
+    "dotenv>=0.9.9",
+    "ipykernel>=7.1.0",
+    "ipywidgets>=8.1.8",
+    "matplotlib>=3.10.7",
+    "ruff>=0.14.5",
+    "seaborn>=0.13.2",
+    "spotipy>=2.25.1",
+    "transformers>=4.57.1",
+]
