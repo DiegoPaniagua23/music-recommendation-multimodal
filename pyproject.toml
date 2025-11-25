@@ -5,6 +5,7 @@ description = "MIR Project: Multimodal Classification and Recommendation System.
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
+    "dvc>=3.64.0",
     "numpy>=2.2.6",
     "pandas>=2.3.3",
     "torch>=2.9.1",
