@@ -207,3 +207,7 @@ logs/
 
 # Secrets & Config
 config/youtube_cookies.txt
+
+# Data
+/data/
+/papers/
