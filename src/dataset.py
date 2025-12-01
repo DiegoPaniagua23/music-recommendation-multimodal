@@ -149,7 +149,7 @@ class MultimodalDataset(Dataset):
         # No, es solo un entero.
         
         # Vamos a asumir una implementación "Casual" donde tomamos una ventana aleatoria o 
-        # los últimos N items vistos *antes* de este timestamp.
+        # los últimos N items vistos antes de este timestamp.
         # Dado que self.user_groups tiene la lista ordenada cronológicamente:
         # Necesitamos el índice de ESTA interacción en la lista del usuario.
         # Lo calcularemos al vuelo o lo pre-calculamos en __init__. 
@@ -215,11 +215,14 @@ class MultimodalDataset(Dataset):
             audio = torch.tensor([]) # Empty
 
         # D. Texto (Lyrics Embeddings)
+        # Inicializar máscara de texto (1 = presente, 0 = ausente)
+        text_mask = 0
         if self.text_embeddings and target_track_id in self.text_embeddings:
             text_emb = self.text_embeddings[target_track_id]
+            text_mask = 1
         else:
             text_emb = torch.zeros(768) # Dimensión base de DistilBERT
-
+            
         return {
             'user_id': user_id, # String, cuidado con DataLoader default collate
             'history_ids': torch.tensor(history_ids, dtype=torch.long),
@@ -227,6 +230,7 @@ class MultimodalDataset(Dataset):
             'target_image': image,
             'target_audio': audio,
             'target_text': text_emb,
+            'target_text_mask': torch.tensor(text_mask, dtype=torch.long), # Máscara explicita
             'target_tabular': tabular_feats,
             'target_id': self.item_id_mapper.get(target_track_id, 0) # Para validación/métricas
         }
