@@ -9,6 +9,8 @@ class TwoTowerModel(nn.Module):
     def __init__(self, 
                  # User Tower Args
                  vocab_size: int,
+                 num_genders: int = 1,
+                 num_countries: int = 1,
                  max_seq_len: int = 50,
                  user_embedding_dim: int = 256,
                  user_num_heads: int = 4,
@@ -39,6 +41,8 @@ class TwoTowerModel(nn.Module):
         # 1. User Tower
         self.user_tower = SequentialUserEncoder(
             vocab_size=vocab_size,
+            num_genders=num_genders,
+            num_countries=num_countries,
             embedding_dim=user_embedding_dim,
             max_seq_len=max_seq_len,
             num_heads=user_num_heads,
@@ -62,6 +66,7 @@ class TwoTowerModel(nn.Module):
         Args:
             batch: Diccionario del DataLoader con claves:
                    - history_ids, history_mask (User Input)
+                   - user_gender, user_country (User Attributes)
                    - target_image, target_audio, target_text, target_tabular (Item Input)
                    - target_text_mask (Opcional)
         Returns:
@@ -71,6 +76,8 @@ class TwoTowerModel(nn.Module):
         # 1. Forward User Tower
         user_emb = self.user_tower(
             history_ids=batch['history_ids'],
+            user_gender=batch['user_gender'],
+            user_country=batch['user_country'],
             history_mask=batch['history_mask']
         ) # (B, D)
         

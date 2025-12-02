@@ -6,7 +6,7 @@ import numpy as np
 from PIL import Image
 from torchvision import transforms
 from typing import Dict, Optional, Any
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.preprocessing import OneHotEncoder, StandardScaler, LabelEncoder
 
 class MultimodalDataset(Dataset):
     def __init__(
@@ -31,7 +31,7 @@ class MultimodalDataset(Dataset):
             text_embeddings (Dict[str, torch.Tensor], optional): Embeddings de texto pre-cargados.
             max_seq_len (int): Longitud máxima de la secuencia histórica.
             transform (transforms.Compose, optional): Transformaciones para imágenes.
-            encoders (Dict[str, Any], optional): Diccionario con encoders ya ajustados (StandardScaler, OneHotEncoder).
+            encoders (Dict[str, Any], optional): Diccionario con encoders ya ajustados (StandardScaler, OneHotEncoder, LabelEncoder).
                                                  Si es None, se ajustarán con los datos provistos.
         """
         self.interactions_df = interactions_df.copy()
@@ -97,6 +97,43 @@ class MultimodalDataset(Dataset):
         # Lista final de features tabulares
         self.tabular_features = self.numerical_features + self.genre_features
 
+        # C. Encoding de Features de Usuario (Gender, Country)
+        # Rellenar nulos
+        if 'gender' in self.interactions_df.columns:
+            self.interactions_df['gender'] = self.interactions_df['gender'].fillna('unknown')
+        else:
+            self.interactions_df['gender'] = 'unknown'
+            
+        if 'country' in self.interactions_df.columns:
+            self.interactions_df['country'] = self.interactions_df['country'].fillna('unknown')
+        else:
+            self.interactions_df['country'] = 'unknown'
+
+        # Gender Encoder
+        if 'gender_encoder' not in self.encoders:
+            self.encoders['gender_encoder'] = LabelEncoder()
+            # Ajustar con todos los valores posibles + 'unknown'
+            self.encoders['gender_encoder'].fit(self.interactions_df['gender'])
+        
+        # Country Encoder
+        if 'country_encoder' not in self.encoders:
+            self.encoders['country_encoder'] = LabelEncoder()
+            self.encoders['country_encoder'].fit(self.interactions_df['country'])
+
+        # Transformar y guardar en columnas numéricas
+        # Usamos transform para asegurar consistencia (si hay valores nuevos en val, LabelEncoder fallará si no se maneja)
+        # Para robustez en producción, deberíamos manejar 'unknown' para valores no vistos.
+        # Aquí asumimos que 'unknown' ya cubre nulos, pero si aparece un país nuevo en val, LabelEncoder lanzará error.
+        # Solución rápida: Mapear valores desconocidos a 'unknown' antes de transform.
+        
+        known_genders = set(self.encoders['gender_encoder'].classes_)
+        self.interactions_df['gender'] = self.interactions_df['gender'].apply(lambda x: x if x in known_genders else 'unknown')
+        self.interactions_df['gender_idx'] = self.encoders['gender_encoder'].transform(self.interactions_df['gender'])
+        
+        known_countries = set(self.encoders['country_encoder'].classes_)
+        self.interactions_df['country'] = self.interactions_df['country'].apply(lambda x: x if x in known_countries else 'unknown')
+        self.interactions_df['country_idx'] = self.encoders['country_encoder'].transform(self.interactions_df['country'])
+
         # 3. Pre-procesamiento de secuencias
         self.interactions_df['timestamp'] = pd.to_datetime(self.interactions_df['timestamp'])
         self.interactions_df.sort_values(by=['user_id', 'timestamp'], inplace=True)
@@ -110,6 +147,8 @@ class MultimodalDataset(Dataset):
         # Guardar track_ids y user_ids en arrays para acceso rápido
         self.track_ids = self.interactions_df['track_id'].values
         self.user_ids = self.interactions_df['user_id'].values
+        self.user_genders = self.interactions_df['gender_idx'].values
+        self.user_countries = self.interactions_df['country_idx'].values
         
         # Pre-calcular índices de secuencia
         self._precompute_sequence_indices()
@@ -125,6 +164,8 @@ class MultimodalDataset(Dataset):
         # 1. Identificar Usuario e Item Objetivo
         user_id = self.user_ids[idx]
         target_track_id = self.track_ids[idx]
+        user_gender = self.user_genders[idx]
+        user_country = self.user_countries[idx]
         
         # 2. Construir Secuencia Histórica (User Tower Input)
         # Obtenemos toda la historia del usuario
@@ -225,6 +266,8 @@ class MultimodalDataset(Dataset):
             
         return {
             'user_id': user_id, # String, cuidado con DataLoader default collate
+            'user_gender': torch.tensor(user_gender, dtype=torch.long),
+            'user_country': torch.tensor(user_country, dtype=torch.long),
             'history_ids': torch.tensor(history_ids, dtype=torch.long),
             'history_mask': torch.tensor(attention_mask, dtype=torch.long),
             'target_image': image,
