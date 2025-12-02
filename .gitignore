@@ -201,14 +201,10 @@ cython_debug/
 .cursorignore
 .cursorindexingignore
 
-# Logs
-logs/
-*.log
-
-# Secrets & Config
-config/youtube_cookies.txt
+# Secrets
 config/proxies.txt
+config/youtube_cookies.txt
 
-# Data
-/data/
-/papers/
+# Data and Papers
+data/
+papers/
