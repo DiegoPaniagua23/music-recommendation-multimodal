@@ -38,7 +38,8 @@ class VisualEncoder(nn.Module):
 class TextEncoder(nn.Module):
     def __init__(self, input_dim=768, embedding_dim=128):
         super().__init__()
-        # Proyección simple para embeddings de DistilBERT
+        # Proyección simple para embeddings de Transformers (DistilBERT, mDeBERTa, etc.)
+        # mDeBERTa-v3-base tiene dim=768, igual que BERT base.
         self.projection = nn.Sequential(
             nn.Linear(input_dim, 512),
             nn.ReLU(),
@@ -70,6 +71,7 @@ class MultimodalItemEncoder(nn.Module):
                  embedding_dim: int = 256,
                  audio_dim: int = 128,
                  visual_dim: int = 128,
+                 text_input_dim: int = 768, # Nuevo parámetro para flexibilidad (ej. 1024 para Large)
                  text_dim: int = 128,
                  tabular_dim: int = 128):
         """
@@ -79,7 +81,7 @@ class MultimodalItemEncoder(nn.Module):
         
         self.audio_encoder = AudioEncoder(embedding_dim=audio_dim)
         self.visual_encoder = VisualEncoder(embedding_dim=visual_dim)
-        self.text_encoder = TextEncoder(embedding_dim=text_dim)
+        self.text_encoder = TextEncoder(input_dim=text_input_dim, embedding_dim=text_dim)
         self.tabular_encoder = TabularEncoder(input_dim=tabular_input_dim, embedding_dim=tabular_dim)
         
         # Capa de Fusión (Late Fusion)
