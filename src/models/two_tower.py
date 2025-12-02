@@ -7,8 +7,11 @@ from .user_tower import SequentialUserEncoder
 
 class TwoTowerModel(nn.Module):
     def __init__(self, 
-                 # User Tower Args
+                 # User Tower Args (Mandatory first)
                  vocab_size: int,
+                 # Item Tower Args (Mandatory first)
+                 tabular_input_dim: int,
+                 # User Tower Args (Optional)
                  num_genders: int = 1,
                  num_countries: int = 1,
                  max_seq_len: int = 50,
@@ -16,14 +19,14 @@ class TwoTowerModel(nn.Module):
                  user_num_heads: int = 4,
                  user_num_layers: int = 2,
                  user_dropout: float = 0.1,
-                 # Item Tower Args
-                 tabular_input_dim: int = 0,
+                 # Item Tower Args (Optional)
                  item_embedding_dim: int = 256,
                  audio_dim: int = 128,
                  visual_dim: int = 128,
-                 text_input_dim: int = 768,
+                 text_model_name: str = "microsoft/mdeberta-v3-base",
                  text_dim: int = 128,
                  tabular_dim: int = 128,
+                 use_lora: bool = True,
                  # Loss Args
                  temperature: float = 0.07):
         """
@@ -56,9 +59,10 @@ class TwoTowerModel(nn.Module):
             embedding_dim=item_embedding_dim,
             audio_dim=audio_dim,
             visual_dim=visual_dim,
-            text_input_dim=text_input_dim,
+            text_model_name=text_model_name,
             text_dim=text_dim,
-            tabular_dim=tabular_dim
+            tabular_dim=tabular_dim,
+            use_lora=use_lora
         )
 
     def forward(self, batch: Dict[str, torch.Tensor]):
@@ -67,11 +71,12 @@ class TwoTowerModel(nn.Module):
             batch: Diccionario del DataLoader con claves:
                    - history_ids, history_mask (User Input)
                    - user_gender, user_country (User Attributes)
-                   - target_image, target_audio, target_text, target_tabular (Item Input)
-                   - target_text_mask (Opcional)
+                   - target_image, target_audio, target_input_ids, target_attention_mask, target_tabular (Item Input)
         Returns:
             loss: Escalar (InfoNCE Loss)
             logits: Matriz de similitud (Batch, Batch)
+            user_emb: Embeddings de usuario normalizados
+            item_emb: Embeddings de item normalizados
         """
         # 1. Forward User Tower
         user_emb = self.user_tower(
@@ -85,9 +90,9 @@ class TwoTowerModel(nn.Module):
         item_emb = self.item_tower(
             images=batch['target_image'],
             audio=batch['target_audio'],
-            text=batch['target_text'],
-            tabular=batch['target_tabular'],
-            text_mask=batch.get('target_text_mask')
+            input_ids=batch['target_input_ids'],
+            attention_mask=batch['target_attention_mask'],
+            tabular=batch['target_tabular']
         ) # (B, D)
         
         # 3. Normalización (L2 Norm)
@@ -117,12 +122,28 @@ class TwoTowerModel(nn.Module):
         
         return loss, logits, user_emb, item_emb
 
-    def get_user_embedding(self, history_ids, history_mask=None):
+    def get_user_embedding(self, history_ids, history_mask=None, user_gender=None, user_country=None):
         """Helper para inferencia solo de usuario"""
-        emb = self.user_tower(history_ids, history_mask)
+        if user_gender is None:
+            user_gender = torch.zeros_like(history_ids[:, 0]) 
+        if user_country is None:
+            user_country = torch.zeros_like(history_ids[:, 0])
+
+        emb = self.user_tower(
+            history_ids=history_ids, 
+            history_mask=history_mask,
+            user_gender=user_gender,
+            user_country=user_country
+        )
         return F.normalize(emb, p=2, dim=1)
 
-    def get_item_embedding(self, images, audio, text, tabular, text_mask=None):
+    def get_item_embedding(self, images, audio, input_ids, attention_mask, tabular):
         """Helper para inferencia solo de item (para indexar catálogo)"""
-        emb = self.item_tower(images, audio, text, tabular, text_mask)
+        emb = self.item_tower(
+            images=images, 
+            audio=audio, 
+            input_ids=input_ids, 
+            attention_mask=attention_mask, 
+            tabular=tabular
+        )
         return F.normalize(emb, p=2, dim=1)

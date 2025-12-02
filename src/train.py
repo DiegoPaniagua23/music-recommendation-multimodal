@@ -6,6 +6,7 @@ import pandas as pd
 from tqdm import tqdm
 import json
 import argparse
+from transformers import AutoTokenizer
 
 from src.dataset import MultimodalDataset
 from src.models import TwoTowerModel
@@ -116,13 +117,29 @@ def main():
     
     print(f"Train samples: {len(train_df)}, Val samples: {len(val_df)}")
     
-    # Cargar Text Embeddings si existen
-    text_embeddings = None
-    if args.text_embeddings_path and os.path.exists(args.text_embeddings_path):
-        print(f"Cargando text embeddings desde {args.text_embeddings_path}...")
-        text_embeddings = torch.load(args.text_embeddings_path)
-    elif args.text_embeddings_path:
-        print(f"ADVERTENCIA: No se encontró el archivo de embeddings en {args.text_embeddings_path}")
+    # Configurar Tokenizer y Text Data para LoRA
+    tokenizer = None
+    text_data = None
+    
+    # Si usamos LoRA, necesitamos el texto crudo, no los embeddings pre-computados
+    # Asumimos que el CSV tiene una columna 'lyrics' o similar
+    # Para simplificar, extraemos el texto del DF original
+    print("Preparando datos de texto para LoRA...")
+    tokenizer = AutoTokenizer.from_pretrained("microsoft/mdeberta-v3-base", use_fast=False)
+    
+    # Crear diccionario track_id -> texto
+    # Prioridad: lyrics > artist - track
+    if 'lyrics' in df.columns:
+        text_df = df[['track_id', 'lyrics']].drop_duplicates('track_id')
+        text_df['lyrics'] = text_df['lyrics'].fillna("")
+        text_data = dict(zip(text_df['track_id'], text_df['lyrics']))
+    else:
+        print("Usando metadata (Artist - Track) como texto fallback")
+        unique_tracks = df.drop_duplicates('track_id')
+        texts = (unique_tracks['artist_name'].fillna("") + " - " + 
+                 unique_tracks['track_name'].fillna("") + " (" + 
+                 unique_tracks['album_name'].fillna("") + ")")
+        text_data = dict(zip(unique_tracks['track_id'], texts))
 
     # Datasets
     print("Inicializando Datasets...")
@@ -131,7 +148,8 @@ def main():
         item_id_mapper=item_id_mapper,
         img_dir=args.img_dir,
         audio_dir=args.audio_dir,
-        text_embeddings=text_embeddings
+        text_data=text_data,
+        tokenizer=tokenizer
     )
     
     # Para validación, necesitamos la historia completa (incluyendo lo visto en train)
@@ -142,7 +160,8 @@ def main():
         item_id_mapper=item_id_mapper,
         img_dir=args.img_dir,
         audio_dir=args.audio_dir,
-        text_embeddings=text_embeddings,
+        text_data=text_data,
+        tokenizer=tokenizer,
         encoders=train_dataset.get_encoders() # Usar mismos scalers
     )
     
@@ -172,7 +191,7 @@ def main():
         tabular_input_dim=tabular_dim,
         item_embedding_dim=256,
         user_embedding_dim=256,
-        text_input_dim=768 # mDeBERTa / DistilBERT dim
+        use_lora=True # Activar LoRA
     ).to(args.device)
     
     optimizer = optim.AdamW(model.parameters(), lr=args.lr)

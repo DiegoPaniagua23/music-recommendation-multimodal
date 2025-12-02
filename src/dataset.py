@@ -15,7 +15,8 @@ class MultimodalDataset(Dataset):
         item_id_mapper: Dict[str, int],
         img_dir: str,
         audio_dir: Optional[str] = None,
-        text_embeddings: Optional[Dict[str, torch.Tensor]] = None,
+        text_data: Optional[Dict[str, str]] = None, # Cambiado de embeddings a texto crudo
+        tokenizer: Optional[Any] = None, # Tokenizer de HuggingFace
         max_seq_len: int = 30,
         transform: Optional[transforms.Compose] = None,
         encoders: Optional[Dict[str, Any]] = None
@@ -28,17 +29,18 @@ class MultimodalDataset(Dataset):
             item_id_mapper (Dict[str, int]): Mapeo de track_id a índice entero.
             img_dir (str): Directorio con las imágenes de portadas.
             audio_dir (str, optional): Directorio con tensores de Mel Spectrograms.
-            text_embeddings (Dict[str, torch.Tensor], optional): Embeddings de texto pre-cargados.
+            text_data (Dict[str, str], optional): Diccionario track_id -> texto crudo (lyrics).
+            tokenizer (Any, optional): Tokenizer para procesar el texto.
             max_seq_len (int): Longitud máxima de la secuencia histórica.
             transform (transforms.Compose, optional): Transformaciones para imágenes.
-            encoders (Dict[str, Any], optional): Diccionario con encoders ya ajustados (StandardScaler, OneHotEncoder, LabelEncoder).
-                                                 Si es None, se ajustarán con los datos provistos.
+            encoders (Dict[str, Any], optional): Diccionario con encoders ya ajustados.
         """
         self.interactions_df = interactions_df.copy()
         self.item_id_mapper = item_id_mapper
         self.img_dir = img_dir
         self.audio_dir = audio_dir
-        self.text_embeddings = text_embeddings
+        self.text_data = text_data
+        self.tokenizer = tokenizer
         self.max_seq_len = max_seq_len
         self.encoders = encoders if encoders else {}
         
@@ -255,14 +257,22 @@ class MultimodalDataset(Dataset):
         else:
             audio = torch.tensor([]) # Empty
 
-        # D. Texto (Lyrics Embeddings)
-        # Inicializar máscara de texto (1 = presente, 0 = ausente)
-        text_mask = 0
-        if self.text_embeddings and target_track_id in self.text_embeddings:
-            text_emb = self.text_embeddings[target_track_id]
-            text_mask = 1
-        else:
-            text_emb = torch.zeros(768) # Dimensión base de DistilBERT
+        # D. Texto (Lyrics Tokenization)
+        input_ids = torch.zeros(512, dtype=torch.long)
+        attention_mask_text = torch.zeros(512, dtype=torch.long)
+        
+        if self.text_data and self.tokenizer and target_track_id in self.text_data:
+            text = self.text_data[target_track_id]
+            # Tokenizar al vuelo (o usar pre-tokenizado si se prefiere velocidad)
+            encoded = self.tokenizer(
+                text,
+                padding='max_length',
+                truncation=True,
+                max_length=512,
+                return_tensors='pt'
+            )
+            input_ids = encoded['input_ids'].squeeze(0)
+            attention_mask_text = encoded['attention_mask'].squeeze(0)
             
         return {
             'user_id': user_id, # String, cuidado con DataLoader default collate
@@ -272,8 +282,8 @@ class MultimodalDataset(Dataset):
             'history_mask': torch.tensor(attention_mask, dtype=torch.long),
             'target_image': image,
             'target_audio': audio,
-            'target_text': text_emb,
-            'target_text_mask': torch.tensor(text_mask, dtype=torch.long), # Máscara explicita
+            'target_input_ids': input_ids,
+            'target_attention_mask': attention_mask_text,
             'target_tabular': tabular_feats,
             'target_id': self.item_id_mapper.get(target_track_id, 0) # Para validación/métricas
         }

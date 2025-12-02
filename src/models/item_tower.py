@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 import torchvision.models as models
+from transformers import AutoModel, AutoConfig
+from peft import get_peft_model, LoraConfig, TaskType
 from typing import Optional
 
 class AudioEncoder(nn.Module):
@@ -36,19 +38,47 @@ class VisualEncoder(nn.Module):
         return self.backbone(x)
 
 class TextEncoder(nn.Module):
-    def __init__(self, input_dim=768, embedding_dim=128):
+    def __init__(self, model_name="microsoft/mdeberta-v3-base", embedding_dim=128, use_lora=True):
         super().__init__()
-        # Proyección simple para embeddings de Transformers (DistilBERT, mDeBERTa, etc.)
-        # mDeBERTa-v3-base tiene dim=768, igual que BERT base.
+        
+        # Cargar modelo base
+        self.transformer = AutoModel.from_pretrained(model_name)
+        
+        if use_lora:
+            # Configuración LoRA
+            peft_config = LoraConfig(
+                task_type=TaskType.FEATURE_EXTRACTION, 
+                inference_mode=False, 
+                r=8,            # Rango de la matriz de adaptación
+                lora_alpha=32,  # Factor de escala
+                lora_dropout=0.1,
+                target_modules=["query_proj", "value_proj"] # Módulos a adaptar en DeBERTa
+            )
+            self.transformer = get_peft_model(self.transformer, peft_config)
+            self.transformer.print_trainable_parameters()
+            
+        # Proyección final
+        # mDeBERTa-v3-base hidden size es 768
         self.projection = nn.Sequential(
-            nn.Linear(input_dim, 512),
+            nn.Linear(768, 512),
             nn.ReLU(),
             nn.Dropout(0.1),
             nn.Linear(512, embedding_dim)
         )
         
-    def forward(self, x):
-        return self.projection(x)
+    def forward(self, input_ids, attention_mask):
+        # Forward pass del Transformer
+        outputs = self.transformer(input_ids=input_ids, attention_mask=attention_mask)
+        
+        # Mean Pooling
+        token_embeddings = outputs.last_hidden_state
+        input_mask_expanded = attention_mask.unsqueeze(-1).expand(token_embeddings.size()).float()
+        sum_embeddings = torch.sum(token_embeddings * input_mask_expanded, 1)
+        sum_mask = torch.clamp(input_mask_expanded.sum(1), min=1e-9)
+        sentence_embeddings = sum_embeddings / sum_mask
+        
+        # Proyección
+        return self.projection(sentence_embeddings)
 
 class TabularEncoder(nn.Module):
     def __init__(self, input_dim, embedding_dim=128):
@@ -71,9 +101,10 @@ class MultimodalItemEncoder(nn.Module):
                  embedding_dim: int = 256,
                  audio_dim: int = 128,
                  visual_dim: int = 128,
-                 text_input_dim: int = 768, # Nuevo parámetro para flexibilidad (ej. 1024 para Large)
+                 text_model_name: str = "microsoft/mdeberta-v3-base",
                  text_dim: int = 128,
-                 tabular_dim: int = 128):
+                 tabular_dim: int = 128,
+                 use_lora: bool = True):
         """
         Item Tower que fusiona 4 modalidades: Audio, Visual, Texto, Tabular.
         """
@@ -81,7 +112,7 @@ class MultimodalItemEncoder(nn.Module):
         
         self.audio_encoder = AudioEncoder(embedding_dim=audio_dim)
         self.visual_encoder = VisualEncoder(embedding_dim=visual_dim)
-        self.text_encoder = TextEncoder(input_dim=text_input_dim, embedding_dim=text_dim)
+        self.text_encoder = TextEncoder(model_name=text_model_name, embedding_dim=text_dim, use_lora=use_lora)
         self.tabular_encoder = TabularEncoder(input_dim=tabular_input_dim, embedding_dim=tabular_dim)
         
         # Capa de Fusión (Late Fusion)
@@ -98,35 +129,26 @@ class MultimodalItemEncoder(nn.Module):
     def forward(self, 
                 images: torch.Tensor, 
                 audio: torch.Tensor, 
-                text: torch.Tensor, 
-                tabular: torch.Tensor,
-                text_mask: Optional[torch.Tensor] = None):
-        """
-        Args:
-            images: (B, 3, 224, 224)
-            audio: (B, 1, F, T)
-            text: (B, 768)
-            tabular: (B, tabular_input_dim)
-            text_mask: (B,) or (B, 1) - 1 si hay texto, 0 si no.
-        Returns:
-            item_embedding: (B, embedding_dim)
-        """
-        vis_emb = self.visual_encoder(images)
-        aud_emb = self.audio_encoder(audio)
-        txt_emb = self.text_encoder(text)
-        tab_emb = self.tabular_encoder(tabular)
+                input_ids: torch.Tensor, 
+                attention_mask: torch.Tensor,
+                tabular: torch.Tensor):
         
-        # Aplicar máscara de texto si está disponible
-        # Esto asegura que si no hay texto, la contribución sea exactamente 0 (sin sesgo/bias residual)
-        if text_mask is not None:
-            if text_mask.dim() == 1:
-                text_mask = text_mask.unsqueeze(1)
-            txt_emb = txt_emb * text_mask
+        # 1. Encode Modalities
+        audio_emb = self.audio_encoder(audio)
+        visual_emb = self.visual_encoder(images)
+        text_emb = self.text_encoder(input_ids, attention_mask)
+        tabular_emb = self.tabular_encoder(tabular)
         
-        # Concatenación
-        concat = torch.cat([vis_emb, aud_emb, txt_emb, tab_emb], dim=1)
+        # 2. Concatenate
+        # Si alguna modalidad falta (ej. audio vacío), deberíamos manejarlo con máscaras o tensores cero.
+        # Aquí asumimos que el Dataset entrega tensores válidos (aunque sean ceros).
+        combined = torch.cat([audio_emb, visual_emb, text_emb, tabular_emb], dim=1)
         
-        # Fusión
-        item_embedding = self.fusion_layer(concat)
+        # 3. Fusion
+        item_embedding = self.fusion_layer(combined)
         
         return item_embedding
+
+
+
+
