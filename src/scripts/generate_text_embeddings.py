@@ -28,7 +28,8 @@ def generate_embeddings(data_path, output_path, model_name="microsoft/mdeberta-v
     print(f"Generando embeddings para {len(texts)} items únicos...")
     
     # Cargar Modelo y Tokenizer
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    # use_fast=False es necesario para mDeBERTa-v3 para evitar errores de conversión con protobuf/sentencepiece
+    tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=False)
     model = AutoModel.from_pretrained(model_name).to(device)
     model.eval()
     
@@ -70,8 +71,8 @@ def generate_embeddings(data_path, output_path, model_name="microsoft/mdeberta-v
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--data_path", type=str, required=True, help="Path al CSV con datos")
-    parser.add_argument("--output_path", type=str, required=True, help="Path para guardar .pt")
+    parser.add_argument("--data_path", type=str, default="./data/spotify-kaggle/interim/lyrics_dataset_10k_fixed.csv", help="Path al CSV con datos")
+    parser.add_argument("--output_path", type=str, default="./data/spotify-kaggle/processed/lyrics_embeddings_10k_fixed.pt", help="Path para guardar .pt")
     parser.add_argument("--model_name", type=str, default="microsoft/mdeberta-v3-base")
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
