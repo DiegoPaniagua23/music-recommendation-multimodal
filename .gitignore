@@ -207,6 +207,7 @@ logs/
 
 # Secrets & Config
 config/youtube_cookies.txt
+config/proxies.txt
 
 # Data
 /data/

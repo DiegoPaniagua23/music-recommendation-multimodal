@@ -31,6 +31,7 @@ MAX_DELAY = 6
 BATCH_SIZE = 100  # Process 100 songs
 BATCH_SLEEP = 60  # Sleep for 1 minute after each batch
 COOKIES_PATH = "config/youtube_cookies.txt"
+PROXIES_PATH = "config/proxies.txt"
 
 # List of common User-Agents to rotate
 USER_AGENTS = [
@@ -44,11 +45,39 @@ USER_AGENTS = [
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0'
 ]
 
-def ensure_dirs():
-    Path(OUTPUT_DIR).mkdir(parents=True, exist_ok=True)
-    Path(TEMP_DIR).mkdir(parents=True, exist_ok=True)
+def get_proxy():
+    """
+    Reads a random proxy from the config file if it exists.
+    Returns the proxy string or None.
+    """
+    if not os.path.exists(PROXIES_PATH):
+        return None
+
+    try:
+        with open(PROXIES_PATH, 'r') as f:
+            proxies = [line.strip() for line in f if line.strip() and not line.startswith('#')]
+
+        if not proxies:
+            return None
+
+        proxy = random.choice(proxies)
+
+        # Handle tab/space separation (e.g. "IP PORT" -> "IP:PORT")
+        parts = proxy.split()
+        if len(parts) == 2:
+            proxy = f"{parts[0]}:{parts[1]}"
+
+        # Ensure protocol is present
+        if not proxy.startswith('http://') and not proxy.startswith('https://'):
+            proxy = f"http://{proxy}"
+
+        return proxy
+    except Exception as e:
+        logging.error(f"Error reading proxies file: {e}")
+        return None
 
 def get_youtube_url(query):
+    # proxy = get_proxy()
     ydl_opts = {
         'format': 'bestaudio/best',
         'noplaylist': True,
@@ -58,6 +87,10 @@ def get_youtube_url(query):
         'user_agent': random.choice(USER_AGENTS),  # Rotate User-Agent
         'cookiefile': COOKIES_PATH,
     }
+
+    # if proxy:
+    #     ydl_opts['proxy'] = proxy
+    #     # logging.info(f"Using proxy for search: {proxy}")
 
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         try:
@@ -104,33 +137,38 @@ def download_and_process_song(track_id, artist, song):
         logging.info(f"Skipping {artist} - {song} (already exists)")
         return "skipped"
 
-    query = f"{artist} - {song} Official Audio"
+    query = f"ytsearch1:{artist} - {song} Official Audio"
     logging.info(f"Processing: {query}")
 
     # Add a small random delay before request to be safer
     time.sleep(random.uniform(MIN_DELAY, MAX_DELAY))
 
-    url, video_id = get_youtube_url(query)
-    if not url:
-        logging.warning(f"Could not find URL for {query}")
-        return False
-
     temp_filename = f"{track_id}_temp"
     temp_path_template = os.path.join(TEMP_DIR, temp_filename)
 
+    # proxy = get_proxy()
     ydl_opts = {
         'format': 'bestaudio/best',
         'outtmpl': temp_path_template + '.%(ext)s',
         'quiet': True,
         'noplaylist': True,
+        'default_search': 'ytsearch1',
         'user_agent': random.choice(USER_AGENTS),  # Rotate User-Agent
         'cookiefile': COOKIES_PATH,
+        'socket_timeout': 10,  # Timeout in seconds
+        'retries': 3,         # Number of retries
     }
+
+    # if proxy:
+    #     ydl_opts['proxy'] = proxy
+    #     logging.info(f"Using proxy: {proxy}")
 
     downloaded_path = None
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
+            info = ydl.extract_info(query, download=True)
+            if 'entries' in info:
+                info = info['entries'][0]
             ext = info['ext']
             downloaded_path = f"{temp_path_template}.{ext}"
 
@@ -145,16 +183,32 @@ def download_and_process_song(track_id, artist, song):
                 # Cleanup temp file even if processing failed
                 os.remove(downloaded_path)
                 return False
+        else:
+             # Fallback if file not found (sometimes webm vs m4a)
+             for file in os.listdir(TEMP_DIR):
+                 if file.startswith(temp_filename):
+                     downloaded_path = os.path.join(TEMP_DIR, file)
+                     success = process_audio(downloaded_path, output_path)
+                     os.remove(downloaded_path)
+                     if success:
+                         return "downloaded"
+                     return False
+             return False
 
     except Exception as e:
         logging.error(f"Error downloading/processing {artist} - {song}: {e}")
         if downloaded_path and os.path.exists(downloaded_path):
             os.remove(downloaded_path)
         return False
+
+def ensure_dirs():
+    Path(OUTPUT_DIR).mkdir(parents=True, exist_ok=True)
+    Path(TEMP_DIR).mkdir(parents=True, exist_ok=True)
+
 def main():
-    parser = argparse.ArgumentParser(description="Download audio from YouTube based on CSV.")
-    parser.add_argument("--start", type=int, default=0, help="Start index for processing songs.")
-    parser.add_argument("--end", type=int, default=None, help="End index for processing songs.")
+    parser = argparse.ArgumentParser(description="Download audio from YouTube based on Spotify dataset.")
+    parser.add_argument("--start", type=int, default=0, help="Start index for processing")
+    parser.add_argument("--end", type=int, default=None, help="End index for processing")
     args = parser.parse_args()
 
     ensure_dirs()
@@ -180,7 +234,6 @@ def main():
 
     logging.info(f"Processing range: {args.start} to {end_idx} (Total: {len(unique_songs)} songs to process)")
 
-    consecutive_errors = 0
     consecutive_errors = 0
     songs_processed_in_batch = 0
 
