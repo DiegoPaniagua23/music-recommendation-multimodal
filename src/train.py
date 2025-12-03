@@ -9,10 +9,21 @@ import pandas as pd
 from tqdm import tqdm
 import json
 import argparse
+import logging
 from transformers import AutoTokenizer
 
 from src.dataset import MultimodalDataset
 from src.models import TwoTowerModel
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
 
 def setup_ddp():
     if "LOCAL_RANK" in os.environ:
@@ -26,38 +37,42 @@ def cleanup_ddp():
     if dist.is_initialized():
         dist.destroy_process_group()
 
-def train_one_epoch(model, dataloader, optimizer, device, epoch, is_main_process=True):
+def train_one_epoch(model, dataloader, optimizer, device, epoch, is_main_process=True, log_interval=50):
     model.train()
     total_loss = 0
     scaler = torch.cuda.amp.GradScaler()
     
-    if is_main_process:
-        pbar = tqdm(dataloader, desc=f"Epoch {epoch} [Train]")
-    else:
-        pbar = dataloader
-        
-    for batch in pbar:
+    num_batches = len(dataloader)
+    
+    for i, batch in enumerate(dataloader):
         # Mover batch a dispositivo
         for k, v in batch.items():
             if isinstance(v, torch.Tensor):
                 batch[k] = v.to(device)
         
-        optimizer.zero_grad()
+        optimizer.zero_grad(set_to_none=True) # Más eficiente que zero_grad()
         
         # Forward pass with AMP
         with torch.cuda.amp.autocast():
-            loss, logits, _, _ = model(batch)
+            # Solo necesitamos loss, ignoramos el resto para ahorrar memoria si es posible
+            # (aunque el grafo ya se creó, evitamos mantener referencias extra)
+            loss, _, _, _ = model(batch)
         
         # Backward pass with Scaler
         scaler.scale(loss).backward()
         scaler.step(optimizer)
         scaler.update()
         
-        total_loss += loss.item()
-        if is_main_process:
-            pbar.set_postfix({'loss': f"{loss.item():.4f}"})
+        loss_val = loss.item()
+        total_loss += loss_val
         
-    return total_loss / len(dataloader)
+        if is_main_process and (i + 1) % log_interval == 0:
+            logger.info(f"Epoch {epoch} [{i+1}/{num_batches}] | Loss: {loss_val:.4f}")
+            
+        # Liberar memoria explícitamente
+        del loss, batch
+        
+    return total_loss / num_batches
 
 def evaluate(model, dataloader, device, k=10):
     model.eval()
@@ -115,23 +130,24 @@ def main():
     is_main_process = (local_rank == 0)
     
     if is_main_process:
-        print(f"Using device: {device}")
+        logger.info(f"Using device: {device}")
     
     # 1. Cargar Datos
     if is_main_process:
-        print("Cargando datos...")
+        logger.info("Cargando datos...")
     if not os.path.exists(args.data_path):
+        logger.error(f"Data file not found at {args.data_path}")
         raise FileNotFoundError(f"Data file not found at {args.data_path}")
         
     df = pd.read_csv(args.data_path)
     
     # Cargar o Crear Mapper
     if os.path.exists(args.mapper_path):
-        print(f"Cargando mapper desde {args.mapper_path}")
+        logger.info(f"Cargando mapper desde {args.mapper_path}")
         with open(args.mapper_path, 'r') as f:
             item_id_mapper = json.load(f)
     else:
-        print("Mapper no encontrado, creando desde datos...")
+        logger.info("Mapper no encontrado, creando desde datos...")
         unique_tracks = df['track_id'].unique()
         item_id_mapper = {tid: i+1 for i, tid in enumerate(unique_tracks)}
         # Guardar mapper
@@ -148,20 +164,20 @@ def main():
     train_df = df.iloc[:split_idx].copy()
     val_df = df.iloc[split_idx:].copy()
     
-    print(f"Train samples: {len(train_df)}, Val samples: {len(val_df)}")
+    logger.info(f"Train samples: {len(train_df)}, Val samples: {len(val_df)}")
     
     # Configurar Tokenizer y Text Data para LoRA
     tokenizer = None
     text_data = None
     
     # Si usamos LoRA, necesitamos el texto crudo, no los embeddings pre-computados
-    print("Preparando datos de texto para LoRA...")
+    logger.info("Preparando datos de texto para LoRA...")
     cache_dir = os.getenv('HF_HOME')
     tokenizer = AutoTokenizer.from_pretrained("microsoft/mdeberta-v3-base", use_fast=False, cache_dir=cache_dir)
     
     # 1. Generar texto base (Metadata) para TODOS los tracks
     # Esto asegura que siempre haya algo de texto (Artist - Track)
-    print("Generando texto base desde metadata...")
+    logger.info("Generando texto base desde metadata...")
     unique_tracks = df.drop_duplicates('track_id')
     texts = (unique_tracks['artist_name'].fillna("") + " - " + 
              unique_tracks['track_name'].fillna("") + " (" + 
@@ -170,7 +186,7 @@ def main():
 
     # 2. Cargar Lyrics si se proporcionan y actualizar el diccionario
     if args.lyrics_path and os.path.exists(args.lyrics_path):
-        print(f"Cargando lyrics desde {args.lyrics_path}...")
+        logger.info(f"Cargando lyrics desde {args.lyrics_path}...")
         try:
             lyrics_df = pd.read_csv(args.lyrics_path)
             if 'track_id' in lyrics_df.columns and 'lyrics' in lyrics_df.columns:
@@ -189,21 +205,21 @@ def main():
                     if tid in text_data:
                         text_data[tid] = lyric # Reemplazar
                         count_updates += 1
-                print(f"Lyrics actualizados para {count_updates} tracks.")
+                logger.info(f"Lyrics actualizados para {count_updates} tracks.")
             else:
-                print("Advertencia: El CSV de lyrics no tiene columnas 'track_id' y 'lyrics'.")
+                logger.warning("Advertencia: El CSV de lyrics no tiene columnas 'track_id' y 'lyrics'.")
         except Exception as e:
-            print(f"Error cargando lyrics: {e}")
+            logger.error(f"Error cargando lyrics: {e}")
     elif 'lyrics' in df.columns:
         # Fallback legacy: si el DF principal ya tenía lyrics
-        print("Usando columna 'lyrics' del dataset principal...")
+        logger.info("Usando columna 'lyrics' del dataset principal...")
         text_df = df[['track_id', 'lyrics']].drop_duplicates('track_id')
         text_df = text_df.dropna(subset=['lyrics'])
         lyrics_dict = dict(zip(text_df['track_id'], text_df['lyrics']))
         text_data.update(lyrics_dict)
 
     # Datasets
-    print("Inicializando Datasets...")
+    logger.info("Inicializando Datasets...")
     train_dataset = MultimodalDataset(
         interactions_df=train_df,
         item_id_mapper=item_id_mapper,
@@ -235,8 +251,24 @@ def main():
     train_sampler = DistributedSampler(train_dataset, shuffle=True)
     val_sampler = DistributedSampler(val_dataset, shuffle=False)
 
-    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, sampler=train_sampler, num_workers=4, pin_memory=True)
-    val_loader = DataLoader(val_dataset, batch_size=args.batch_size, sampler=val_sampler, num_workers=4, pin_memory=True)
+    train_loader = DataLoader(
+        train_dataset, 
+        batch_size=args.batch_size, 
+        sampler=train_sampler, 
+        num_workers=4, 
+        pin_memory=True,
+        persistent_workers=True, # Mantiene workers vivos entre épocas
+        prefetch_factor=2        # Pre-carga 2 batches por worker
+    )
+    val_loader = DataLoader(
+        val_dataset, 
+        batch_size=args.batch_size, 
+        sampler=val_sampler, 
+        num_workers=4, 
+        pin_memory=True,
+        persistent_workers=True,
+        prefetch_factor=2
+    )
     
     # 2. Modelo
     vocab_size = len(item_id_mapper) + 1
@@ -247,7 +279,7 @@ def main():
     num_genders = len(train_dataset.encoders['gender_encoder'].classes_) if 'gender_encoder' in train_dataset.encoders else 1
     num_countries = len(train_dataset.encoders['country_encoder'].classes_) if 'country_encoder' in train_dataset.encoders else 1
 
-    print(f"Vocab Size: {vocab_size}, Tabular Dim: {tabular_dim}, Genders: {num_genders}, Countries: {num_countries}")
+    logger.info(f"Vocab Size: {vocab_size}, Tabular Dim: {tabular_dim}, Genders: {num_genders}, Countries: {num_countries}")
     
     model = TwoTowerModel(
         vocab_size=vocab_size,
@@ -268,7 +300,7 @@ def main():
     best_recall = 0.0
     if is_main_process:
         os.makedirs("checkpoints", exist_ok=True)
-        print("Iniciando entrenamiento...")
+        logger.info("Iniciando entrenamiento...")
         
     for epoch in range(args.epochs):
         train_sampler.set_epoch(epoch) # Important for shuffling in DDP
@@ -285,19 +317,22 @@ def main():
         
         # Logging y Guardado (Solo Rank 0 imprime y guarda)
         if is_main_process:
-            print(f"Epoch {epoch+1} | Loss: {train_loss:.4f} | Val Recall@10 (Batch): {val_recall:.4f}")
+            logger.info(f"Epoch {epoch+1} | Loss: {train_loss:.4f} | Val Recall@10 (Batch): {val_recall:.4f}")
             
             if val_recall > best_recall:
                 best_recall = val_recall
-                torch.save(eval_model.state_dict(), 'checkpoints/best_model.pth')
-                print(f"Saved best model with Recall@10: {best_recall:.4f}")
+                torch.save(eval_model.state_dict(), f'checkpoints/best_model_epoch{epoch+1}.pth')
+                logger.info(f"Saved best model with Recall@10: {best_recall:.4f}")
         
         # CRITICAL FIX: Wait for main process to finish evaluation before starting next epoch
         if dist.is_initialized():
             dist.barrier()
+        
+        # Limpiar caché de GPU al final de la época para evitar fragmentación
+        torch.cuda.empty_cache()
             
     if is_main_process:
-        print("Entrenamiento finalizado.")
+        logger.info("Entrenamiento finalizado.")
         
     cleanup_ddp()
 
