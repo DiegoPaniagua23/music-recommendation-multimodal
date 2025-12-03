@@ -3,7 +3,7 @@ import os
 import sys
 from datetime import datetime
 
-LOG_FILE = "logs/audio_downloader.log"
+LOG_FILE = "logs/audio_downloader_7500.log"
 TEMP_DIR = "data/audio/temp"
 PROCESSED_DIR = "data/audio/processed"
 
