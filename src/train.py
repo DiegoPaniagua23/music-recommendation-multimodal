@@ -10,6 +10,7 @@ from tqdm import tqdm
 import json
 import argparse
 import logging
+import joblib
 from transformers import AutoTokenizer
 
 from src.dataset import MultimodalDataset
@@ -245,6 +246,11 @@ def main():
     # Inyectar historia completa al dataset de validación
     full_user_groups = df.groupby('user_id')['track_id'].apply(list).to_dict()
     val_dataset.user_groups = full_user_groups
+    
+    # Guardar Encoders para Inferencia
+    encoders_path = os.path.join(os.path.dirname(args.mapper_path), 'encoders.pkl')
+    logger.info(f"Guardando encoders en {encoders_path}...")
+    joblib.dump(train_dataset.encoders, encoders_path)
     
     # DataLoaders
     # Use DistributedSampler for DDP
