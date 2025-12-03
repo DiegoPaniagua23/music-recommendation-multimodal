@@ -65,34 +65,35 @@ def evaluate(model, dataloader, device, k=10):
     # Evaluación simplificada: Recall@K "in-batch"
     # Verificamos si el item positivo está en el top-K de items del batch para ese usuario.
     
-    hits = 0
-    total = 0
+    hits = torch.tensor(0.0, device=device)
+    total = torch.tensor(0.0, device=device)
     
     with torch.no_grad():
-        for batch in tqdm(dataloader, desc="Evaluating"):
+        for batch in tqdm(dataloader, desc="Evaluating", disable=not (dist.get_rank() == 0)):
+            # Mover tensores al dispositivo
             for k_key, v in batch.items():
                 if isinstance(v, torch.Tensor):
                     batch[k_key] = v.to(device)
             
+            # Nota: Usamos el modelo sin DDP wrapper (model.module) si es posible para evitar overhead,
+            # pero si pasas el modelo DDP directo, asegúrate de que esté en .eval() para no sincronizar grads.
             _, logits, _, _ = model(batch)
             
-            # logits: (B, B)
-            # Diagonal contiene los pares positivos (usuario i, item i)
-            
-            # Obtener top-k índices para cada usuario (fila)
-            # topk_indices: (B, K)
+            # --- Lógica de métricas (igual que antes) ---
             _, topk_indices = torch.topk(logits, k=k, dim=1)
-            
-            # Targets son 0, 1, 2, ... B-1 (la diagonal)
-            targets = torch.arange(logits.shape[0], device=device).unsqueeze(1) # (B, 1)
-            
-            # Verificar si el target está en topk
+            targets = torch.arange(logits.shape[0], device=device).unsqueeze(1)
             is_hit = (topk_indices == targets).any(dim=1)
             
-            hits += is_hit.sum().item()
+            hits += is_hit.sum()
             total += logits.shape[0]
             
-    return hits / total if total > 0 else 0
+    # --- SINCRONIZACIÓN DDP ---
+    if dist.is_initialized():
+        # Sumamos los hits y el total de todas las GPUs
+        dist.all_reduce(hits, op=dist.ReduceOp.SUM)
+        dist.all_reduce(total, op=dist.ReduceOp.SUM)
+            
+    return (hits / total).item() if total > 0 else 0.0
 
 def main():
     parser = argparse.ArgumentParser(description="Train Two-Tower Multimodal Model")
@@ -276,16 +277,25 @@ def main():
         
         # Para evaluación, usamos el modelo base (sin DDP wrapper)
         # En DDP, model.module es el modelo original
-        if is_main_process:
+        if isinstance(model, DDP):
             eval_model = model.module
-            val_recall = evaluate(eval_model, val_loader, args.device, k=10)
-            
+        else:
+            eval_model = model
+        
+        val_recall = evaluate(eval_model, val_loader, args.device, k=10)
+        
+        # Logging y Guardado (Solo Rank 0 imprime y guarda)
+        if is_main_process:
             print(f"Epoch {epoch+1} | Loss: {train_loss:.4f} | Val Recall@10 (Batch): {val_recall:.4f}")
             
             if val_recall > best_recall:
                 best_recall = val_recall
                 torch.save(eval_model.state_dict(), 'checkpoints/best_model.pth')
                 print(f"Saved best model with Recall@10: {best_recall:.4f}")
+        
+        # CRITICAL FIX: Wait for main process to finish evaluation before starting next epoch
+        if dist.is_initialized():
+            dist.barrier()
             
     if is_main_process:
         print("Entrenamiento finalizado.")

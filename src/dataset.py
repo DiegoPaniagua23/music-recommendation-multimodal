@@ -161,6 +161,10 @@ class MultimodalDataset(Dataset):
         
         # Pre-calcular índices de secuencia
         self._precompute_sequence_indices()
+        
+        # Mapeo de User ID a Entero para detección de colisiones en el batch
+        unique_users = self.interactions_df['user_id'].unique()
+        self.user_int_mapper = {uid: i for i, uid in enumerate(unique_users)}
 
     def get_encoders(self):
         """Retorna los encoders ajustados para usarlos en validación/test."""
@@ -175,6 +179,7 @@ class MultimodalDataset(Dataset):
         target_track_id = self.track_ids[idx]
         user_gender = self.user_genders[idx]
         user_country = self.user_countries[idx]
+        user_int_idx = self.user_int_mapper.get(user_id, 0)
         
         # 2. Construir Secuencia Histórica (User Tower Input)
         # Obtenemos toda la historia del usuario
@@ -278,7 +283,7 @@ class MultimodalDataset(Dataset):
                 truncation=True,
                 max_length=512,
                 return_tensors='pt'
-            )
+            ) 
             input_ids = encoded['input_ids'].squeeze(0)
             attention_mask_text = encoded['attention_mask'].squeeze(0)
             
@@ -293,7 +298,8 @@ class MultimodalDataset(Dataset):
             'target_input_ids': input_ids,
             'target_attention_mask': attention_mask_text,
             'target_tabular': tabular_feats,
-            'target_id': self.item_id_mapper.get(target_track_id, 0) # Para validación/métricas
+            'target_id': self.item_id_mapper.get(target_track_id, 0), # Para validación/métricas
+            'user_idx': torch.tensor(user_int_idx, dtype=torch.long) # Para masking de colisiones
         }
 
     def _precompute_sequence_indices(self):

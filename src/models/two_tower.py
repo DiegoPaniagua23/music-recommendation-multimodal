@@ -105,6 +105,25 @@ class TwoTowerModel(nn.Module):
         # logits[i, j] es la similitud entre usuario i e item j
         logits = torch.matmul(user_emb, item_emb.t()) / self.temperature
         
+        # --- FIX: Masking Collisions (False Negatives) ---
+        # Si el mismo usuario aparece múltiples veces en el batch, no debemos
+        # tratar sus otras apariciones como negativos.
+        if 'user_idx' in batch:
+            user_ids = batch['user_idx'] # (B,)
+            # Matriz de colisiones: True donde user_i == user_j
+            collision_mask = user_ids.unsqueeze(1) == user_ids.unsqueeze(0) # (B, B)
+            
+            # Queremos mantener la diagonal (True Positives) intacta.
+            # Solo queremos enmascarar los OFF-DIAGONAL que sean del mismo usuario.
+            mask_off_diagonal = collision_mask.clone()
+            mask_off_diagonal.fill_diagonal_(False)
+            
+            # Llenar con -inf para que Softmax los ignore (probabilidad 0)
+            # Usamos -1e4 porque -1e9 causa overflow en float16 (AMP)
+            if mask_off_diagonal.any():
+                logits.masked_fill_(mask_off_diagonal, -1e4)
+        # -------------------------------------------------
+        
         # 5. Cálculo de Loss (InfoNCE Simétrica / CLIP Loss)
         # Los positivos son la diagonal (usuario i con item i)
         batch_size = logits.shape[0]
