@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import os
 import torchvision.models as models
 from transformers import AutoModel, AutoConfig
 from peft import get_peft_model, LoraConfig, TaskType
@@ -42,7 +43,8 @@ class TextEncoder(nn.Module):
         super().__init__()
         
         # Cargar modelo base
-        self.transformer = AutoModel.from_pretrained(model_name)
+        cache_dir = os.getenv('HF_HOME')
+        self.transformer = AutoModel.from_pretrained(model_name, cache_dir=cache_dir)
         
         if use_lora:
             # Configuración LoRA

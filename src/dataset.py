@@ -114,13 +114,20 @@ class MultimodalDataset(Dataset):
         # Gender Encoder
         if 'gender_encoder' not in self.encoders:
             self.encoders['gender_encoder'] = LabelEncoder()
-            # Ajustar con todos los valores posibles + 'unknown'
-            self.encoders['gender_encoder'].fit(self.interactions_df['gender'])
+            # Ajustar con todos los valores posibles + 'unknown' explícitamente
+            unique_genders = list(self.interactions_df['gender'].unique())
+            if 'unknown' not in unique_genders:
+                unique_genders.append('unknown')
+            self.encoders['gender_encoder'].fit(unique_genders)
         
         # Country Encoder
         if 'country_encoder' not in self.encoders:
             self.encoders['country_encoder'] = LabelEncoder()
-            self.encoders['country_encoder'].fit(self.interactions_df['country'])
+            # Ajustar con todos los valores posibles + 'unknown' explícitamente
+            unique_countries = list(self.interactions_df['country'].unique())
+            if 'unknown' not in unique_countries:
+                unique_countries.append('unknown')
+            self.encoders['country_encoder'].fit(unique_countries)
 
         # Transformar y guardar en columnas numéricas
         # Usamos transform para asegurar consistencia (si hay valores nuevos en val, LabelEncoder fallará si no se maneja)
@@ -255,7 +262,8 @@ class MultimodalDataset(Dataset):
             else:
                 audio = torch.zeros((1, 64, 128))
         else:
-            audio = torch.tensor([]) # Empty
+            # Retornar tensor de ceros si no se usa audio, para evitar error en el modelo
+            audio = torch.zeros((1, 64, 128))
 
         # D. Texto (Lyrics Tokenization)
         input_ids = torch.zeros(512, dtype=torch.long)

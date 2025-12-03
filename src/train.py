@@ -1,7 +1,11 @@
 import os
 import torch
+from torch import nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
+import torch.distributed as dist
+from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.utils.data.distributed import DistributedSampler
 import pandas as pd
 from tqdm import tqdm
 import json
@@ -11,11 +15,28 @@ from transformers import AutoTokenizer
 from src.dataset import MultimodalDataset
 from src.models import TwoTowerModel
 
-def train_one_epoch(model, dataloader, optimizer, device, epoch):
+def setup_ddp():
+    if "LOCAL_RANK" in os.environ:
+        dist.init_process_group(backend="nccl")
+        local_rank = int(os.environ["LOCAL_RANK"])
+        torch.cuda.set_device(local_rank)
+        return local_rank
+    return 0
+
+def cleanup_ddp():
+    if dist.is_initialized():
+        dist.destroy_process_group()
+
+def train_one_epoch(model, dataloader, optimizer, device, epoch, is_main_process=True):
     model.train()
     total_loss = 0
+    scaler = torch.cuda.amp.GradScaler()
     
-    pbar = tqdm(dataloader, desc=f"Epoch {epoch} [Train]")
+    if is_main_process:
+        pbar = tqdm(dataloader, desc=f"Epoch {epoch} [Train]")
+    else:
+        pbar = dataloader
+        
     for batch in pbar:
         # Mover batch a dispositivo
         for k, v in batch.items():
@@ -24,15 +45,18 @@ def train_one_epoch(model, dataloader, optimizer, device, epoch):
         
         optimizer.zero_grad()
         
-        # Forward pass
-        loss, logits, _, _ = model(batch)
+        # Forward pass with AMP
+        with torch.cuda.amp.autocast():
+            loss, logits, _, _ = model(batch)
         
-        # Backward pass
-        loss.backward()
-        optimizer.step()
+        # Backward pass with Scaler
+        scaler.scale(loss).backward()
+        scaler.step(optimizer)
+        scaler.update()
         
         total_loss += loss.item()
-        pbar.set_postfix({'loss': f"{loss.item():.4f}"})
+        if is_main_process:
+            pbar.set_postfix({'loss': f"{loss.item():.4f}"})
         
     return total_loss / len(dataloader)
 
@@ -76,17 +100,26 @@ def main():
     parser.add_argument("--img_dir", type=str, default="data/spotify-kaggle/album_covers/")
     parser.add_argument("--audio_dir", type=str, default=None, help="Path to audio embeddings dir")
     parser.add_argument("--text_embeddings_path", type=str, default=None, help="Path to pre-computed text embeddings .pt file")
+    parser.add_argument("--lyrics_path", type=str, default=None, help="Path to lyrics CSV file")
     parser.add_argument("--mapper_path", type=str, default="data/spotify-kaggle/interim/item_id_mapper.json")
     parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--epochs", type=int, default=10)
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
     args = parser.parse_args()
+
+    # Setup DDP
+    local_rank = setup_ddp()
+    device = torch.device(f"cuda:{local_rank}") if torch.cuda.is_available() else torch.device("cpu")
+    args.device = device # Override device arg
+    is_main_process = (local_rank == 0)
     
-    print(f"Using device: {args.device}")
+    if is_main_process:
+        print(f"Using device: {device}")
     
     # 1. Cargar Datos
-    print("Cargando datos...")
+    if is_main_process:
+        print("Cargando datos...")
     if not os.path.exists(args.data_path):
         raise FileNotFoundError(f"Data file not found at {args.data_path}")
         
@@ -122,24 +155,52 @@ def main():
     text_data = None
     
     # Si usamos LoRA, necesitamos el texto crudo, no los embeddings pre-computados
-    # Asumimos que el CSV tiene una columna 'lyrics' o similar
-    # Para simplificar, extraemos el texto del DF original
     print("Preparando datos de texto para LoRA...")
-    tokenizer = AutoTokenizer.from_pretrained("microsoft/mdeberta-v3-base", use_fast=False)
+    cache_dir = os.getenv('HF_HOME')
+    tokenizer = AutoTokenizer.from_pretrained("microsoft/mdeberta-v3-base", use_fast=False, cache_dir=cache_dir)
     
-    # Crear diccionario track_id -> texto
-    # Prioridad: lyrics > artist - track
-    if 'lyrics' in df.columns:
+    # 1. Generar texto base (Metadata) para TODOS los tracks
+    # Esto asegura que siempre haya algo de texto (Artist - Track)
+    print("Generando texto base desde metadata...")
+    unique_tracks = df.drop_duplicates('track_id')
+    texts = (unique_tracks['artist_name'].fillna("") + " - " + 
+             unique_tracks['track_name'].fillna("") + " (" + 
+             unique_tracks['album_name'].fillna("") + ")")
+    text_data = dict(zip(unique_tracks['track_id'], texts))
+
+    # 2. Cargar Lyrics si se proporcionan y actualizar el diccionario
+    if args.lyrics_path and os.path.exists(args.lyrics_path):
+        print(f"Cargando lyrics desde {args.lyrics_path}...")
+        try:
+            lyrics_df = pd.read_csv(args.lyrics_path)
+            if 'track_id' in lyrics_df.columns and 'lyrics' in lyrics_df.columns:
+                # Filtrar lyrics vacíos o muy cortos si es necesario
+                lyrics_df = lyrics_df.dropna(subset=['lyrics'])
+                lyrics_df = lyrics_df[lyrics_df['lyrics'].str.strip().str.len() > 0]
+                
+                # Crear dict de lyrics
+                lyrics_dict = dict(zip(lyrics_df['track_id'], lyrics_df['lyrics']))
+                
+                # Actualizar text_data (sobrescribe metadata con lyrics donde haya match)
+                # Opcional: Concatenar metadata + lyrics? 
+                # Por ahora, reemplazamos metadata con lyrics porque es más rico.
+                count_updates = 0
+                for tid, lyric in lyrics_dict.items():
+                    if tid in text_data:
+                        text_data[tid] = lyric # Reemplazar
+                        count_updates += 1
+                print(f"Lyrics actualizados para {count_updates} tracks.")
+            else:
+                print("Advertencia: El CSV de lyrics no tiene columnas 'track_id' y 'lyrics'.")
+        except Exception as e:
+            print(f"Error cargando lyrics: {e}")
+    elif 'lyrics' in df.columns:
+        # Fallback legacy: si el DF principal ya tenía lyrics
+        print("Usando columna 'lyrics' del dataset principal...")
         text_df = df[['track_id', 'lyrics']].drop_duplicates('track_id')
-        text_df['lyrics'] = text_df['lyrics'].fillna("")
-        text_data = dict(zip(text_df['track_id'], text_df['lyrics']))
-    else:
-        print("Usando metadata (Artist - Track) como texto fallback")
-        unique_tracks = df.drop_duplicates('track_id')
-        texts = (unique_tracks['artist_name'].fillna("") + " - " + 
-                 unique_tracks['track_name'].fillna("") + " (" + 
-                 unique_tracks['album_name'].fillna("") + ")")
-        text_data = dict(zip(unique_tracks['track_id'], texts))
+        text_df = text_df.dropna(subset=['lyrics'])
+        lyrics_dict = dict(zip(text_df['track_id'], text_df['lyrics']))
+        text_data.update(lyrics_dict)
 
     # Datasets
     print("Inicializando Datasets...")
@@ -170,8 +231,12 @@ def main():
     val_dataset.user_groups = full_user_groups
     
     # DataLoaders
-    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=4, pin_memory=True)
-    val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=4, pin_memory=True)
+    # Use DistributedSampler for DDP
+    train_sampler = DistributedSampler(train_dataset, shuffle=True)
+    val_sampler = DistributedSampler(val_dataset, shuffle=False)
+
+    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, sampler=train_sampler, num_workers=4, pin_memory=True)
+    val_loader = DataLoader(val_dataset, batch_size=args.batch_size, sampler=val_sampler, num_workers=4, pin_memory=True)
     
     # 2. Modelo
     vocab_size = len(item_id_mapper) + 1
@@ -194,25 +259,38 @@ def main():
         use_lora=True # Activar LoRA
     ).to(args.device)
     
+    # Wrap with DDP
+    model = DDP(model, device_ids=[local_rank], output_device=local_rank)
+    
     optimizer = optim.AdamW(model.parameters(), lr=args.lr)
     
     # 3. Training Loop
     best_recall = 0.0
-    os.makedirs("checkpoints", exist_ok=True)
-    
-    print("Iniciando entrenamiento...")
+    if is_main_process:
+        os.makedirs("checkpoints", exist_ok=True)
+        print("Iniciando entrenamiento...")
+        
     for epoch in range(args.epochs):
-        train_loss = train_one_epoch(model, train_loader, optimizer, args.device, epoch+1)
-        val_recall = evaluate(model, val_loader, args.device, k=10)
+        train_sampler.set_epoch(epoch) # Important for shuffling in DDP
+        train_loss = train_one_epoch(model, train_loader, optimizer, args.device, epoch+1, is_main_process)
         
-        print(f"Epoch {epoch+1} | Loss: {train_loss:.4f} | Val Recall@10 (Batch): {val_recall:.4f}")
-        
-        if val_recall > best_recall:
-            best_recall = val_recall
-            torch.save(model.state_dict(), 'checkpoints/best_model.pth')
-            print(f"Saved best model with Recall@10: {best_recall:.4f}")
+        # Para evaluación, usamos el modelo base (sin DDP wrapper)
+        # En DDP, model.module es el modelo original
+        if is_main_process:
+            eval_model = model.module
+            val_recall = evaluate(eval_model, val_loader, args.device, k=10)
             
-    print("Entrenamiento finalizado.")
+            print(f"Epoch {epoch+1} | Loss: {train_loss:.4f} | Val Recall@10 (Batch): {val_recall:.4f}")
+            
+            if val_recall > best_recall:
+                best_recall = val_recall
+                torch.save(eval_model.state_dict(), 'checkpoints/best_model.pth')
+                print(f"Saved best model with Recall@10: {best_recall:.4f}")
+            
+    if is_main_process:
+        print("Entrenamiento finalizado.")
+        
+    cleanup_ddp()
 
 if __name__ == '__main__':
     main()
