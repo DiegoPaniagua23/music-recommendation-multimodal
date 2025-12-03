@@ -211,3 +211,4 @@ papers/
 /data
 model_cache/
 checkpoints/
+/checkpoints
