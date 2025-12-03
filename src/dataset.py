@@ -263,12 +263,12 @@ class MultimodalDataset(Dataset):
                     if audio.dim() == 2:
                         audio = audio.unsqueeze(0)
                 except Exception:
-                    audio = torch.zeros((1, 64, 128)) # Dimensiones dummy
+                    audio = torch.zeros((1, 128, 128)) # Dimensiones dummy
             else:
-                audio = torch.zeros((1, 64, 128))
+                audio = torch.zeros((1, 128, 128))
         else:
             # Retornar tensor de ceros si no se usa audio, para evitar error en el modelo
-            audio = torch.zeros((1, 64, 128))
+            audio = torch.zeros((1, 128, 128))
 
         # D. Texto (Lyrics Tokenization)
         input_ids = torch.zeros(512, dtype=torch.long)
