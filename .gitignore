@@ -206,6 +206,5 @@ config/proxies.txt
 config/youtube_cookies.txt
 
 # Data and Papers
-data/
-papers/
-/data
+/data/
+/papers/
