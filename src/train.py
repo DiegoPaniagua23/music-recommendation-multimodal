@@ -1,6 +1,5 @@
 import os
 import torch
-from torch import nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 import torch.distributed as dist
