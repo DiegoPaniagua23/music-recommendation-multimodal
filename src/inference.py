@@ -2,6 +2,7 @@ import os
 import torch
 import pandas as pd
 import json
+import joblib
 import argparse
 import logging
 from tqdm import tqdm
@@ -60,20 +61,48 @@ def load_resources(args, device):
             text_data.update(lyrics_dict)
             
     # 4. Initialize Reference Dataset (to fit encoders)
-    # We use the full dataframe to ensure encoders cover all values
+    # Load encoders if available to ensure consistency with training
+    if args.encoders_path:
+        encoders_path = args.encoders_path
+    else:
+        encoders_path = os.path.join(os.path.dirname(args.mapper_path), 'encoders.pkl')
+        
+    encoders = None
+    if os.path.exists(encoders_path):
+        logger.info(f"Loading encoders from {encoders_path}...")
+        encoders = joblib.load(encoders_path)
+    else:
+        logger.warning(f"Encoders not found at {encoders_path}. Encoders will be refitted (may cause dimension mismatch).")
+
     logger.info("Initializing reference dataset...")
     ref_dataset = MultimodalDataset(
         interactions_df=df,
         item_id_mapper=item_id_mapper,
         img_dir=args.img_dir,
         text_data=text_data,
-        tokenizer=tokenizer
+        tokenizer=tokenizer,
+        encoders=encoders
     )
     
     # 5. Load Model
     logger.info("Loading model...")
+    
+    # Load state dict first to inspect dimensions
+    if not os.path.exists(args.model_path):
+        logger.error(f"Model checkpoint not found at {args.model_path}")
+        raise FileNotFoundError(f"Model checkpoint not found at {args.model_path}")
+        
+    state_dict = torch.load(args.model_path, map_location=device)
+    
+    # Infer dimensions from state_dict to ensure compatibility
+    # User Tower: country_embedding.weight -> (num_countries, embedding_dim)
+    num_countries_ckpt = state_dict['user_tower.country_embedding.weight'].shape[0]
+    
+    # Item Tower: tabular_encoder.mlp.0.weight -> (hidden_dim, input_dim)
+    # Note: Linear layer weights are (out_features, in_features)
+    tabular_dim_ckpt = state_dict['item_tower.tabular_encoder.mlp.0.weight'].shape[1]
+    
     vocab_size = len(item_id_mapper) + 1
-    tabular_dim = ref_dataset.tabular_data.shape[1]
     
     # Check for encoders to set dimensions
     # Note: In dataset.py, genre_encoder is for 'track_genre', not user gender. 
@@ -81,7 +110,14 @@ def load_resources(args, device):
     # but train.py assumes they might exist. 
     # Let's stick to train.py logic:
     num_genders_user = len(ref_dataset.encoders['gender_encoder'].classes_) if 'gender_encoder' in ref_dataset.encoders else 1
-    num_countries_user = len(ref_dataset.encoders['country_encoder'].classes_) if 'country_encoder' in ref_dataset.encoders else 1
+    
+    # We use the checkpoint dimensions for country and tabular to avoid mismatch
+    # Ideally, we should load the fitted encoders from training, but if not available,
+    # we must respect the model's architecture.
+    num_countries_user = num_countries_ckpt
+    tabular_dim = tabular_dim_ckpt
+    
+    logger.info(f"Model Dimensions - Vocab: {vocab_size}, Tabular: {tabular_dim}, Countries: {num_countries_user}")
     
     model = TwoTowerModel(
         vocab_size=vocab_size,
@@ -93,23 +129,19 @@ def load_resources(args, device):
         use_lora=True
     )
     
-    if os.path.exists(args.model_path):
-        state_dict = torch.load(args.model_path, map_location=device)
-        model.load_state_dict(state_dict)
-        logger.info(f"Model weights loaded from {args.model_path}")
-    else:
-        logger.warning(f"WARNING: Model checkpoint not found at {args.model_path}. Using random weights.")
+    model.load_state_dict(state_dict)
+    logger.info(f"Model weights loaded from {args.model_path}")
         
     model.to(device)
     model.eval()
     
     return model, ref_dataset, df
 
-def index_catalog(args, model, ref_dataset, device):
+def index_catalog(args, model, ref_dataset, original_df, device):
     logger.info("Indexing catalog...")
     
-    # Create a dataframe of unique tracks
-    unique_df = ref_dataset.interactions_df.drop_duplicates('track_id').copy()
+    # Create a dataframe of unique tracks from the ORIGINAL dataframe (to avoid double encoding)
+    unique_df = original_df.drop_duplicates('track_id').copy()
     
     # Add dummy user info to satisfy MultimodalDataset requirements
     # We assign a unique dummy user to each row so history logic is trivial
@@ -262,8 +294,9 @@ def main():
     parser.add_argument("--mapper_path", type=str, default="data/spotify-kaggle/interim/item_id_mapper.json")
     parser.add_argument("--img_dir", type=str, default="data/spotify-kaggle/album_covers/")
     parser.add_argument("--lyrics_path", type=str, default="data/spotify-kaggle/interim/lyrics_dataset_10k_fixed.csv")
-    parser.add_argument("--model_path", type=str, default="checkpoints/best_model.pth")
-    parser.add_argument("--index_path", type=str, default="model_cache/item_index.pt")
+    parser.add_argument("--model_path", type=str, default="checkpoints/prueba_10porciento/best_model_0.1_test.pth")
+    parser.add_argument("--encoders_path", type=str, default=None, help="Path to saved encoders.pkl")
+    parser.add_argument("--index_path", type=str, default="checkpoints/prueba_10porciento/item_index.pt")
     parser.add_argument("--user_id", type=str, help="User ID for recommendation")
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
@@ -274,10 +307,10 @@ def main():
     logger.info(f"Using device: {device}")
     
     # Load Resources
-    model, ref_dataset, _ = load_resources(args, device)
+    model, ref_dataset, original_df = load_resources(args, device)
     
     if args.mode == 'index':
-        index_catalog(args, model, ref_dataset, device)
+        index_catalog(args, model, ref_dataset, original_df, device)
     elif args.mode == 'recommend':
         if not args.user_id:
             raise ValueError("User ID is required for recommendation mode")
