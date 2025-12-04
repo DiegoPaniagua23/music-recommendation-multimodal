@@ -10,8 +10,8 @@ from sklearn.preprocessing import OneHotEncoder, StandardScaler, LabelEncoder
 
 class MultimodalDataset(Dataset):
     def __init__(
-        self, 
-        interactions_df: pd.DataFrame, 
+        self,
+        interactions_df: pd.DataFrame,
         item_id_mapper: Dict[str, int],
         img_dir: str,
         audio_dir: Optional[str] = None,
@@ -23,7 +23,7 @@ class MultimodalDataset(Dataset):
     ):
         """
         Dataset multimodal para arquitectura Two-Tower.
-        
+
         Args:
             interactions_df (pd.DataFrame): DataFrame con interacciones.
             item_id_mapper (Dict[str, int]): Mapeo de track_id a índice entero.
@@ -43,7 +43,7 @@ class MultimodalDataset(Dataset):
         self.tokenizer = tokenizer
         self.max_seq_len = max_seq_len
         self.encoders = encoders if encoders else {}
-        
+
         # 1. Transformaciones de Imagen
         # Se utiliza 224x224 y la normalización estándar de ImageNet porque utilizaremos
         # una ResNet pre-entrenada como backbone visual. Estos modelos esperan esta entrada.
@@ -58,11 +58,11 @@ class MultimodalDataset(Dataset):
 
         # 2. Procesamiento de Features Tabulares
         self.numerical_features = [
-            'popularity', 'danceability', 'energy', 'key', 'loudness', 
-            'mode', 'speechiness', 'acousticness', 'instrumentalness', 
+            'popularity', 'danceability', 'energy', 'key', 'loudness',
+            'mode', 'speechiness', 'acousticness', 'instrumentalness',
             'liveness', 'valence', 'tempo', 'time_signature', 'duration_ms'
         ]
-        
+
         # Filtrar columnas que realmente existen en el DF
         self.numerical_features = [c for c in self.numerical_features if c in self.interactions_df.columns]
 
@@ -82,16 +82,16 @@ class MultimodalDataset(Dataset):
         if 'track_genre' in self.interactions_df.columns:
             # Reshape necesario para sklearn (N, 1)
             genres = self.interactions_df[['track_genre']].values
-            
+
             if 'genre_encoder' not in self.encoders:
                 self.encoders['genre_encoder'] = OneHotEncoder(sparse_output=False, handle_unknown='ignore')
                 genre_encoded = self.encoders['genre_encoder'].fit_transform(genres)
             else:
                 genre_encoded = self.encoders['genre_encoder'].transform(genres)
-            
+
             # Nombres de las nuevas columnas
             self.genre_features = [f"genre_{cat}" for cat in self.encoders['genre_encoder'].categories_[0]]
-            
+
             # Concatenar al DF (usando un DataFrame temporal para evitar fragmentación)
             genre_df = pd.DataFrame(genre_encoded, columns=self.genre_features, index=self.interactions_df.index)
             self.interactions_df = pd.concat([self.interactions_df, genre_df], axis=1)
@@ -105,7 +105,7 @@ class MultimodalDataset(Dataset):
             self.interactions_df['gender'] = self.interactions_df['gender'].fillna('unknown')
         else:
             self.interactions_df['gender'] = 'unknown'
-            
+
         if 'country' in self.interactions_df.columns:
             self.interactions_df['country'] = self.interactions_df['country'].fillna('unknown')
         else:
@@ -134,11 +134,11 @@ class MultimodalDataset(Dataset):
         # Para robustez en producción, deberíamos manejar 'unknown' para valores no vistos.
         # Aquí asumimos que 'unknown' ya cubre nulos, pero si aparece un país nuevo en val, LabelEncoder lanzará error.
         # Solución rápida: Mapear valores desconocidos a 'unknown' antes de transform.
-        
+
         known_genders = set(self.encoders['gender_encoder'].classes_)
         self.interactions_df['gender'] = self.interactions_df['gender'].apply(lambda x: x if x in known_genders else 'unknown')
         self.interactions_df['gender_idx'] = self.encoders['gender_encoder'].transform(self.interactions_df['gender'])
-        
+
         known_countries = set(self.encoders['country_encoder'].classes_)
         self.interactions_df['country'] = self.interactions_df['country'].apply(lambda x: x if x in known_countries else 'unknown')
         self.interactions_df['country_idx'] = self.encoders['country_encoder'].transform(self.interactions_df['country'])
@@ -146,19 +146,19 @@ class MultimodalDataset(Dataset):
         # 3. Pre-procesamiento de secuencias
         self.interactions_df['timestamp'] = pd.to_datetime(self.interactions_df['timestamp'])
         self.interactions_df.sort_values(by=['user_id', 'timestamp'], inplace=True)
-        
+
         # Agrupar historial por usuario
         self.user_groups = self.interactions_df.groupby('user_id')['track_id'].apply(list).to_dict()
-        
+
         # Guardar features tabulares en un array numpy para acceso rápido (float32)
         self.tabular_data = self.interactions_df[self.tabular_features].values.astype(np.float32)
-        
+
         # Guardar track_ids y user_ids en arrays para acceso rápido
         self.track_ids = self.interactions_df['track_id'].values
         self.user_ids = self.interactions_df['user_id'].values
         self.user_genders = self.interactions_df['gender_idx'].values
         self.user_countries = self.interactions_df['country_idx'].values
-        
+
         # Pre-calcular índices de secuencia
         self._precompute_sequence_indices()
         
@@ -184,15 +184,15 @@ class MultimodalDataset(Dataset):
         # 2. Construir Secuencia Histórica (User Tower Input)
         # Obtenemos toda la historia del usuario
         full_history = self.user_groups[user_id]
-        
+
         # Encontrar el índice del item actual en la historia del usuario
-        # Como el DF está ordenado, podemos asumir que la posición en full_history corresponde 
+        # Como el DF está ordenado, podemos asumir que la posición en full_history corresponde
         # al orden temporal. Pero 'idx' es global.
-        # Estrategia más robusta: 
+        # Estrategia más robusta:
         # El dataframe está ordenado. Podemos calcular el índice relativo dentro del grupo.
         # O simplemente, dado que es secuencial, el item en 'idx' corresponde al item en la posición T.
         # La historia son los items 0...T-1.
-        
+
         # Para simplificar y no buscar en listas:
         # Podríamos haber pre-calculado los índices de inicio de cada usuario.
         # Pero asumamos que 'full_history' tiene todos los items.
@@ -202,45 +202,45 @@ class MultimodalDataset(Dataset):
         # Pero si usamos Shuffle en el DataLoader, perdemos el orden.
         # Solución: Pre-calcular la posición en la secuencia para cada fila es costoso en memoria?
         # No, es solo un entero.
-        
-        # Vamos a asumir una implementación "Casual" donde tomamos una ventana aleatoria o 
+
+        # Vamos a asumir una implementación "Casual" donde tomamos una ventana aleatoria o
         # los últimos N items vistos antes de este timestamp.
         # Dado que self.user_groups tiene la lista ordenada cronológicamente:
         # Necesitamos el índice de ESTA interacción en la lista del usuario.
-        # Lo calcularemos al vuelo o lo pre-calculamos en __init__. 
+        # Lo calcularemos al vuelo o lo pre-calculamos en __init__.
         # Para este ejemplo, buscaremos el índice (puede ser lento O(N_user)).
         # MEJORA: Pre-calcular 'history_indices' en __init__.
-        
+
         # Por ahora, implementamos la búsqueda (safe but slow) o asumimos pre-calculo.
-        # Vamos a hacer un "hack" eficiente: 
-        # Usamos el índice global 'idx' si garantizamos que no hay shuffle en el DF base, 
+        # Vamos a hacer un "hack" eficiente:
+        # Usamos el índice global 'idx' si garantizamos que no hay shuffle en el DF base,
         # pero el DataLoader hará shuffle de índices.
         # Lo correcto: Agregar una columna 'user_seq_idx' en __init__.
-        
+
         # (Ver implementación en __init__ abajo, aquí asumimos que existe)
         seq_idx = self.interactions_df_seq_idx[idx] # Necesitamos agregar esto
-        
+
         history_items = full_history[:seq_idx]
         # Truncar o Padding
         if len(history_items) > self.max_seq_len:
             history_items = history_items[-self.max_seq_len:]
-        
+
         # Mapear a enteros
         history_ids = [self.item_id_mapper.get(tid, 0) for tid in history_items]
-        
+
         # Padding
         seq_len = len(history_ids)
         pad_len = self.max_seq_len - seq_len
         history_ids = history_ids + [0] * pad_len # 0 as padding index
-        
+
         # Máscara de atención (1 para real, 0 para padding)
         attention_mask = [1] * seq_len + [0] * pad_len
-        
+
         # 3. Cargar Modalidades del Item Objetivo (Item Tower Input)
-        
+
         # A. Tabular
         tabular_feats = torch.tensor(self.tabular_data[idx], dtype=torch.float32)
-        
+
         # B. Imagen (Album Cover)
         img_path = os.path.join(self.img_dir, f"{target_track_id}.jpg")
         # Fallback si no existe imagen (imagen negra)
@@ -252,14 +252,15 @@ class MultimodalDataset(Dataset):
                 image = torch.zeros((3, 224, 224)) # Tensor negro
         else:
             image = torch.zeros((3, 224, 224))
-            
+
         # C. Audio (Mel Spectrogram)
         if self.audio_dir:
             audio_path = os.path.join(self.audio_dir, f"{target_track_id}.pt")
+
             if os.path.exists(audio_path):
                 try:
                     audio = torch.load(audio_path)
-                    # Asegurar dimensiones esperadas (ej. 1, 128, 128)
+                    # Asegurar dimensiones (C, H, W) -> (1, 128, 128)
                     if audio.dim() == 2:
                         audio = audio.unsqueeze(0)
                 except Exception:
