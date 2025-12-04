@@ -210,3 +210,4 @@ data/
 papers/
 /data
 model_cache/
+/logs
