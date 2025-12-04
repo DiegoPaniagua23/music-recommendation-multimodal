@@ -74,8 +74,15 @@ def compute_all_item_embeddings(model, dataset, unique_df, batch_size, device):
                 attention_mask=batch['target_attention_mask'].to(device),
                 tabular=batch['target_tabular'].to(device)
             )
+            
+            # Check for NaNs in model output
+            if torch.isnan(emb).any():
+                logger.warning(f"NaNs detected in model output for batch {i}")
+                emb = torch.nan_to_num(emb, nan=0.0)
+
             # CRITICAL: Normalize embeddings to match training (Cosine Similarity)
-            emb = F.normalize(emb, p=2, dim=1)
+            # Use eps to avoid division by zero (0/0 -> NaN)
+            emb = F.normalize(emb, p=2, dim=1, eps=1e-8)
             embeddings_list.append(emb.cpu())
             
     # Concatenar
@@ -115,7 +122,17 @@ def calculate_metrics_global(model, val_loader, item_embeddings, device, k_list=
         for i, batch in enumerate(val_loader):
             if (i + 1) % log_interval == 0:
                 logger.info(f"Evaluating Users: [{i+1}/{num_batches}]")
-                
+            
+            # --- DEBUG: Inspeccionar el primer batch ---
+            if i == 0:
+                hist_ids = batch['history_ids']
+                # Contar cuántos items NO son padding (0) en el historial
+                non_zero_hist = (hist_ids != 0).sum(dim=1).float().mean().item()
+                logger.info(f"DEBUG BATCH 0: Avg History Length (non-zero): {non_zero_hist:.2f}")
+                logger.info(f"DEBUG BATCH 0: Sample History IDs: {hist_ids[0].tolist()}")
+                logger.info(f"DEBUG BATCH 0: Target ID: {batch['target_id'][0].item()}")
+            # -------------------------------------------
+
             # 1. Obtener Embedding del Usuario
             user_emb = model.get_user_embedding(
                 history_ids=batch['history_ids'].to(device),
@@ -181,6 +198,7 @@ def main():
     parser.add_argument("--img_dir", type=str, default="data/spotify-kaggle/album_covers/")
     parser.add_argument("--audio_dir", type=str, default="data/audio/mels/", help="Path to audio embeddings dir")
     parser.add_argument("--encoders_path", type=str, default="checkpoints/complete/encoders.pkl", help="Path to encoders.pkl")
+    parser.add_argument("--embeddings_cache_path", type=str, default=None, help="Path to save/load item embeddings cache (.pt)")
     parser.add_argument("--model_path", type=str, required=True, help="Path to .pth checkpoint")
     parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
@@ -213,9 +231,19 @@ def main():
     # 2. Split Train/Val (Misma lógica que train.py)
     df['timestamp'] = pd.to_datetime(df['timestamp'])
     df = df.sort_values('timestamp')
+    
+    # CRITICAL: Pre-calcular seq_idx globalmente para que validación tenga acceso a historia de train
+    # Aseguramos que seq_idx sea int
+    df['seq_idx'] = df.groupby('user_id').cumcount().astype(int)
+    
+    # DEBUG: Verificar que seq_idx crece
+    logger.info(f"Global seq_idx stats: Min={df['seq_idx'].min()}, Max={df['seq_idx'].max()}, Mean={df['seq_idx'].mean():.2f}")
+    
     split_idx = int(len(df) * 0.8)
     train_df = df.iloc[:split_idx].copy()
     val_df = df.iloc[split_idx:].copy()
+    
+    logger.info(f"Val DF seq_idx stats: Min={val_df['seq_idx'].min()}, Max={val_df['seq_idx'].max()}, Mean={val_df['seq_idx'].mean():.2f}")
     
     # 3. Inicializar Datasets
     logger.info(f"Cargando encoders desde {args.encoders_path}...")
@@ -278,8 +306,46 @@ def main():
     model.to(device)
     
     # 5. Generar Embeddings de Items (Index)
-    # Pasamos unique_tracks (raw) para evitar doble procesamiento de features
-    item_embeddings, vocab_size_idx = compute_all_item_embeddings(model, train_dataset, unique_tracks, args.batch_size, device)
+    item_embeddings = None
+    vocab_size_idx = None
+
+    if args.embeddings_cache_path and os.path.exists(args.embeddings_cache_path):
+        logger.info(f"Cargando embeddings de items desde cache: {args.embeddings_cache_path}")
+        cache_data = torch.load(args.embeddings_cache_path, map_location='cpu')
+        item_embeddings = cache_data['item_embeddings']
+        vocab_size_idx = cache_data['vocab_size']
+    else:
+        # Pasamos unique_tracks (raw) para evitar doble procesamiento de features
+        item_embeddings, vocab_size_idx = compute_all_item_embeddings(model, train_dataset, unique_tracks, args.batch_size, device)
+        
+        if args.embeddings_cache_path:
+            logger.info(f"Guardando embeddings de items en cache: {args.embeddings_cache_path}")
+            torch.save({
+                'item_embeddings': item_embeddings,
+                'vocab_size': vocab_size_idx
+            }, args.embeddings_cache_path)
+            
+    # --- DEBUG: Verificar Embeddings ---
+    # Verificar NaNs
+    nan_count = torch.isnan(item_embeddings).sum().item()
+    if nan_count > 0:
+        logger.error(f"CRITICAL: Found {nan_count} NaN values in item embeddings!")
+        # Si hay NaNs y estamos usando cache, el cache está corrupto.
+        if args.embeddings_cache_path and os.path.exists(args.embeddings_cache_path):
+             logger.warning("Deleting corrupted cache file...")
+             os.remove(args.embeddings_cache_path)
+             raise ValueError("Cache was corrupted with NaNs. Deleted. Please run again.")
+    
+    # Verificar cuántos embeddings son cero
+    zero_rows = (item_embeddings.abs().sum(dim=1) == 0).sum().item()
+    logger.info(f"DEBUG: Total Items in Embedding Matrix: {item_embeddings.shape[0]}")
+    logger.info(f"DEBUG: Zero-vector Items: {zero_rows} (Should be small, mostly padding)")
+    
+    # Verificar norma promedio (excluyendo ceros para no sesgar)
+    norms = torch.norm(item_embeddings, p=2, dim=1)
+    non_zero_norms = norms[norms > 0]
+    logger.info(f"DEBUG: Avg Item Embedding Norm (non-zero): {non_zero_norms.mean().item():.4f}")
+    # -----------------------------------
     
     # 6. Calcular Métricas
     results = calculate_metrics_global(model, val_loader, item_embeddings, device, k_list=[10, 20, 50])

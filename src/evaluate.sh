@@ -4,8 +4,8 @@
 #SBATCH --job-name=RS_eval
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --output="/home/est_posgrado_gustavo.angeles/Proyectos/music-recommendation-multimodal/logs/evaluation.log"
-#SBATCH --error="/home/est_posgrado_gustavo.angeles/Proyectos/music-recommendation-multimodal/logs/evaluation.err"
+#SBATCH --output="/home/est_posgrado_gustavo.angeles/Proyectos/music-recommendation-multimodal/logs/evaluation_epoch1.log"
+#SBATCH --error="/home/est_posgrado_gustavo.angeles/Proyectos/music-recommendation-multimodal/logs/evaluation_epoch1.err"
 #SBATCH --mem=0
 #SBATCH --time=0
 
@@ -51,6 +51,7 @@ uv run python "$PYTHON_SCRIPT" \
     --img_dir "data/spotify-kaggle/album_covers/" \
     --audio_dir "data/audio/mels/" \
     --model_path "$MODEL_CHECKPOINT" \
+    --embeddings_cache_path "checkpoints/complete/item_embeddings_cache_epoch1.pt" \
     --batch_size 64
 
 if [ $? -ne 0 ]; then

@@ -306,5 +306,7 @@ class MultimodalDataset(Dataset):
         """Helper para asignar índice secuencial a cada fila por usuario."""
         # Esto es crítico para saber qué parte de la historia corresponde a cada fila
         # sin buscar en listas.
-        self.interactions_df['seq_idx'] = self.interactions_df.groupby('user_id').cumcount()
+        if 'seq_idx' not in self.interactions_df.columns:
+            self.interactions_df['seq_idx'] = self.interactions_df.groupby('user_id').cumcount()
+        
         self.interactions_df_seq_idx = self.interactions_df['seq_idx'].values
