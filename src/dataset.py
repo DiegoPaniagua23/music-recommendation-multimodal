@@ -15,7 +15,8 @@ class MultimodalDataset(Dataset):
         item_id_mapper: Dict[str, int],
         img_dir: str,
         audio_dir: Optional[str] = None,
-        text_embeddings: Optional[Dict[str, torch.Tensor]] = None,
+        text_data: Optional[Dict[str, str]] = None, # Cambiado de embeddings a texto crudo
+        tokenizer: Optional[Any] = None, # Tokenizer de HuggingFace
         max_seq_len: int = 30,
         transform: Optional[transforms.Compose] = None,
         encoders: Optional[Dict[str, Any]] = None
@@ -28,17 +29,18 @@ class MultimodalDataset(Dataset):
             item_id_mapper (Dict[str, int]): Mapeo de track_id a índice entero.
             img_dir (str): Directorio con las imágenes de portadas.
             audio_dir (str, optional): Directorio con tensores de Mel Spectrograms.
-            text_embeddings (Dict[str, torch.Tensor], optional): Embeddings de texto pre-cargados.
+            text_data (Dict[str, str], optional): Diccionario track_id -> texto crudo (lyrics).
+            tokenizer (Any, optional): Tokenizer para procesar el texto.
             max_seq_len (int): Longitud máxima de la secuencia histórica.
             transform (transforms.Compose, optional): Transformaciones para imágenes.
-            encoders (Dict[str, Any], optional): Diccionario con encoders ya ajustados (StandardScaler, OneHotEncoder, LabelEncoder).
-                                                 Si es None, se ajustarán con los datos provistos.
+            encoders (Dict[str, Any], optional): Diccionario con encoders ya ajustados.
         """
         self.interactions_df = interactions_df.copy()
         self.item_id_mapper = item_id_mapper
         self.img_dir = img_dir
         self.audio_dir = audio_dir
-        self.text_embeddings = text_embeddings
+        self.text_data = text_data
+        self.tokenizer = tokenizer
         self.max_seq_len = max_seq_len
         self.encoders = encoders if encoders else {}
 
@@ -112,13 +114,20 @@ class MultimodalDataset(Dataset):
         # Gender Encoder
         if 'gender_encoder' not in self.encoders:
             self.encoders['gender_encoder'] = LabelEncoder()
-            # Ajustar con todos los valores posibles + 'unknown'
-            self.encoders['gender_encoder'].fit(self.interactions_df['gender'])
-
+            # Ajustar con todos los valores posibles + 'unknown' explícitamente
+            unique_genders = list(self.interactions_df['gender'].unique())
+            if 'unknown' not in unique_genders:
+                unique_genders.append('unknown')
+            self.encoders['gender_encoder'].fit(unique_genders)
+        
         # Country Encoder
         if 'country_encoder' not in self.encoders:
             self.encoders['country_encoder'] = LabelEncoder()
-            self.encoders['country_encoder'].fit(self.interactions_df['country'])
+            # Ajustar con todos los valores posibles + 'unknown' explícitamente
+            unique_countries = list(self.interactions_df['country'].unique())
+            if 'unknown' not in unique_countries:
+                unique_countries.append('unknown')
+            self.encoders['country_encoder'].fit(unique_countries)
 
         # Transformar y guardar en columnas numéricas
         # Usamos transform para asegurar consistencia (si hay valores nuevos en val, LabelEncoder fallará si no se maneja)
@@ -152,6 +161,10 @@ class MultimodalDataset(Dataset):
 
         # Pre-calcular índices de secuencia
         self._precompute_sequence_indices()
+        
+        # Mapeo de User ID a Entero para detección de colisiones en el batch
+        unique_users = self.interactions_df['user_id'].unique()
+        self.user_int_mapper = {uid: i for i, uid in enumerate(unique_users)}
 
     def get_encoders(self):
         """Retorna los encoders ajustados para usarlos en validación/test."""
@@ -166,7 +179,8 @@ class MultimodalDataset(Dataset):
         target_track_id = self.track_ids[idx]
         user_gender = self.user_genders[idx]
         user_country = self.user_countries[idx]
-
+        user_int_idx = self.user_int_mapper.get(user_id, 0)
+        
         # 2. Construir Secuencia Histórica (User Tower Input)
         # Obtenemos toda la historia del usuario
         full_history = self.user_groups[user_id]
@@ -250,22 +264,30 @@ class MultimodalDataset(Dataset):
                     if audio.dim() == 2:
                         audio = audio.unsqueeze(0)
                 except Exception:
-                    audio = torch.zeros((1, 128, 128))
+                    audio = torch.zeros((1, 128, 128)) # Dimensiones dummy
             else:
-                # Si no hay audio, retornar tensor de ceros con shape compatible
                 audio = torch.zeros((1, 128, 128))
         else:
-            audio = torch.tensor([]) # Empty
+            # Retornar tensor de ceros si no se usa audio, para evitar error en el modelo
+            audio = torch.zeros((1, 128, 128))
 
-        # D. Texto (Lyrics Embeddings)
-        # Inicializar máscara de texto (1 = presente, 0 = ausente)
-        text_mask = 0
-        if self.text_embeddings and target_track_id in self.text_embeddings:
-            text_emb = self.text_embeddings[target_track_id]
-            text_mask = 1
-        else:
-            text_emb = torch.zeros(768) # Dimensión base de DistilBERT
-
+        # D. Texto (Lyrics Tokenization)
+        input_ids = torch.zeros(512, dtype=torch.long)
+        attention_mask_text = torch.zeros(512, dtype=torch.long)
+        
+        if self.text_data and self.tokenizer and target_track_id in self.text_data:
+            text = self.text_data[target_track_id]
+            # Tokenizar al vuelo (o usar pre-tokenizado si se prefiere velocidad)
+            encoded = self.tokenizer(
+                text,
+                padding='max_length',
+                truncation=True,
+                max_length=512,
+                return_tensors='pt'
+            ) 
+            input_ids = encoded['input_ids'].squeeze(0)
+            attention_mask_text = encoded['attention_mask'].squeeze(0)
+            
         return {
             'user_id': user_id, # String, cuidado con DataLoader default collate
             'user_gender': torch.tensor(user_gender, dtype=torch.long),
@@ -274,15 +296,18 @@ class MultimodalDataset(Dataset):
             'history_mask': torch.tensor(attention_mask, dtype=torch.long),
             'target_image': image,
             'target_audio': audio,
-            'target_text': text_emb,
-            'target_text_mask': torch.tensor(text_mask, dtype=torch.long), # Máscara explicita
+            'target_input_ids': input_ids,
+            'target_attention_mask': attention_mask_text,
             'target_tabular': tabular_feats,
-            'target_id': self.item_id_mapper.get(target_track_id, 0) # Para validación/métricas
+            'target_id': self.item_id_mapper.get(target_track_id, 0), # Para validación/métricas
+            'user_idx': torch.tensor(user_int_idx, dtype=torch.long) # Para masking de colisiones
         }
 
     def _precompute_sequence_indices(self):
         """Helper para asignar índice secuencial a cada fila por usuario."""
         # Esto es crítico para saber qué parte de la historia corresponde a cada fila
         # sin buscar en listas.
-        self.interactions_df['seq_idx'] = self.interactions_df.groupby('user_id').cumcount()
+        if 'seq_idx' not in self.interactions_df.columns:
+            self.interactions_df['seq_idx'] = self.interactions_df.groupby('user_id').cumcount()
+        
         self.interactions_df_seq_idx = self.interactions_df['seq_idx'].values
