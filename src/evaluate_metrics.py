@@ -2,10 +2,11 @@ import argparse
 import logging
 import os
 import json
+import joblib
 import torch
 import pandas as pd
-from tqdm import tqdm
 from torch.utils.data import DataLoader
+import torch.nn.functional as F
 from transformers import AutoTokenizer
 
 from src.dataset import MultimodalDataset
@@ -18,7 +19,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-def compute_all_item_embeddings(model, dataset, batch_size, device):
+
+
+def compute_all_item_embeddings(model, dataset, unique_df, batch_size, device):
     """
     Genera embeddings para TODOS los items únicos en el dataset.
     Retorna:
@@ -28,7 +31,8 @@ def compute_all_item_embeddings(model, dataset, batch_size, device):
     logger.info("Generando índice de items (Catálogo completo)...")
     
     # 1. Crear un dataset de items únicos
-    unique_df = dataset.interactions_df.drop_duplicates('track_id').copy()
+    # Usamos unique_df pasado como argumento (raw) para evitar doble procesamiento
+    unique_df = unique_df.copy()
     # Dummy user info para que pase el __getitem__
     unique_df['user_id'] = 'dummy_user'
     unique_df['timestamp'] = '2020-01-01'
@@ -50,8 +54,14 @@ def compute_all_item_embeddings(model, dataset, batch_size, device):
     track_ids_list = []
     
     model.eval()
+    num_batches = len(loader)
+    log_interval = max(1, num_batches // 10) # Log every 10%
+    
     with torch.no_grad():
-        for batch in tqdm(loader, desc="Indexing Items"):
+        for i, batch in enumerate(loader):
+            if (i + 1) % log_interval == 0:
+                logger.info(f"Indexing Items: [{i+1}/{num_batches}]")
+                
             # Guardar track_ids para saber el orden
             # batch['target_id'] son los enteros mapeados
             track_ids_list.append(batch['target_id'])
@@ -64,6 +74,8 @@ def compute_all_item_embeddings(model, dataset, batch_size, device):
                 attention_mask=batch['target_attention_mask'].to(device),
                 tabular=batch['target_tabular'].to(device)
             )
+            # CRITICAL: Normalize embeddings to match training (Cosine Similarity)
+            emb = F.normalize(emb, p=2, dim=1)
             embeddings_list.append(emb.cpu())
             
     # Concatenar
@@ -96,8 +108,14 @@ def calculate_metrics_global(model, val_loader, item_embeddings, device, k_list=
     metrics = {f"Recall@{k}": [] for k in k_list}
     metrics.update({f"NDCG@{k}": [] for k in k_list})
     
+    num_batches = len(val_loader)
+    log_interval = max(1, num_batches // 10) # Log every 10%
+    
     with torch.no_grad():
-        for batch in tqdm(val_loader, desc="Evaluating Users"):
+        for i, batch in enumerate(val_loader):
+            if (i + 1) % log_interval == 0:
+                logger.info(f"Evaluating Users: [{i+1}/{num_batches}]")
+                
             # 1. Obtener Embedding del Usuario
             user_emb = model.get_user_embedding(
                 history_ids=batch['history_ids'].to(device),
@@ -161,6 +179,8 @@ def main():
     parser.add_argument("--data_path", type=str, default="data/spotify-kaggle/interim/lastfm_spotify_merged.csv")
     parser.add_argument("--mapper_path", type=str, default="data/spotify-kaggle/interim/item_id_mapper.json")
     parser.add_argument("--img_dir", type=str, default="data/spotify-kaggle/album_covers/")
+    parser.add_argument("--audio_dir", type=str, default="data/audio/mels/", help="Path to audio embeddings dir")
+    parser.add_argument("--encoders_path", type=str, default="checkpoints/complete/encoders.pkl", help="Path to encoders.pkl")
     parser.add_argument("--model_path", type=str, required=True, help="Path to .pth checkpoint")
     parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
@@ -198,14 +218,18 @@ def main():
     val_df = df.iloc[split_idx:].copy()
     
     # 3. Inicializar Datasets
-    # Necesitamos instanciar el de Train primero SOLO para ajustar los encoders (StandardScaler, etc)
-    logger.info("Ajustando encoders con datos de entrenamiento...")
+    logger.info(f"Cargando encoders desde {args.encoders_path}...")
+    encoders = joblib.load(args.encoders_path)
+
+    logger.info("Inicializando datasets...")
     train_dataset = MultimodalDataset(
         interactions_df=train_df,
         item_id_mapper=item_id_mapper,
         img_dir=args.img_dir,
+        audio_dir=args.audio_dir,
         text_data=text_data,
-        tokenizer=tokenizer
+        tokenizer=tokenizer,
+        encoders=encoders
     )
     
     # Dataset de Validación (Evaluación)
@@ -216,6 +240,7 @@ def main():
         interactions_df=val_df,
         item_id_mapper=item_id_mapper,
         img_dir=args.img_dir,
+        audio_dir=args.audio_dir,
         text_data=text_data,
         tokenizer=tokenizer,
         encoders=train_dataset.get_encoders() # IMPORTANTE: Usar mismos encoders
@@ -253,7 +278,8 @@ def main():
     model.to(device)
     
     # 5. Generar Embeddings de Items (Index)
-    item_embeddings, vocab_size_idx = compute_all_item_embeddings(model, train_dataset, args.batch_size, device)
+    # Pasamos unique_tracks (raw) para evitar doble procesamiento de features
+    item_embeddings, vocab_size_idx = compute_all_item_embeddings(model, train_dataset, unique_tracks, args.batch_size, device)
     
     # 6. Calcular Métricas
     results = calculate_metrics_global(model, val_loader, item_embeddings, device, k_list=[10, 20, 50])
