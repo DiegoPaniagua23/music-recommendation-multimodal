@@ -9,6 +9,8 @@ from tqdm import tqdm
 from torch.utils.data import DataLoader
 from transformers import AutoTokenizer
 
+import torch.nn.functional as F
+
 from src.dataset import MultimodalDataset
 from src.models import TwoTowerModel
 
@@ -178,6 +180,10 @@ def index_catalog(args, model, ref_dataset, original_df, device):
                 attention_mask=attention_mask,
                 tabular=tabular
             )
+            
+            # Normalize embeddings (Cosine Similarity)
+            emb = F.normalize(emb, p=2, dim=1, eps=1e-8)
+            
             item_embeddings.append(emb.cpu())
             
     item_embeddings = torch.cat(item_embeddings, dim=0)
@@ -222,14 +228,7 @@ def recommend_for_user(args, model, ref_dataset, device):
         
     # Get track IDs
     history_track_ids = user_history_df['track_id'].tolist()
-    print(f"\nUser History ({len(history_track_ids)} items):")
-    for i, tid in enumerate(history_track_ids[-5:]): # Show last 5
-        # Find metadata
-        meta = next((m for m in metadata if m['track_id'] == tid), None)
-        if meta:
-            print(f"  {i+1}. {meta['artist_name']} - {meta['track_name']}")
-        else:
-            print(f"  {i+1}. {tid} (Metadata not found)")
+    print(f"\nTotal User History ({len(history_track_ids)} items)")
             
     # 3. Prepare User Input
     # We need to construct the input tensors for the User Tower
@@ -239,8 +238,21 @@ def recommend_for_user(args, model, ref_dataset, device):
     history_ints = [ref_dataset.item_id_mapper.get(tid, 0) for tid in history_track_ids]
     # Truncate/Pad
     max_len = 50 # Should match training
+    
+    # Identify which items are actually used (the last max_len items)
+    used_history_track_ids = history_track_ids
     if len(history_ints) > max_len:
         history_ints = history_ints[-max_len:]
+        used_history_track_ids = history_track_ids[-max_len:]
+        
+    print(f"\nUser History Considered (Last {len(used_history_track_ids)} items):")
+    for i, tid in enumerate(used_history_track_ids):
+        # Find metadata
+        meta = next((m for m in metadata if m['track_id'] == tid), None)
+        if meta:
+            print(f"  {i+1}. {meta['artist_name']} - {meta['track_name']}")
+        else:
+            print(f"  {i+1}. {tid} (Metadata not found)")
     
     history_tensor = torch.tensor([history_ints], dtype=torch.long).to(device)
     
@@ -260,6 +272,8 @@ def recommend_for_user(args, model, ref_dataset, device):
             user_gender=user_gender,
             user_country=user_country
         )
+        # Normalize user embedding
+        user_emb = F.normalize(user_emb, p=2, dim=1, eps=1e-8)
         
     # 5. Compute Similarity
     # (1, D) @ (N, D).T -> (1, N)
@@ -290,7 +304,7 @@ def recommend_for_user(args, model, ref_dataset, device):
 def main():
     parser = argparse.ArgumentParser(description="Inference for Music Recommendation")
     parser.add_argument("--mode", type=str, required=True, choices=['index', 'recommend'], help="Mode: 'index' to pre-compute embeddings, 'recommend' to query")
-    parser.add_argument("--data_path", type=str, default="data/spotify-kaggle/interim/lastfm_spotify_merged_0.1.csv")
+    parser.add_argument("--data_path", type=str, default="data/spotify-kaggle/interim/lastfm_spotify_merged.csv")
     parser.add_argument("--mapper_path", type=str, default="data/spotify-kaggle/interim/item_id_mapper.json")
     parser.add_argument("--img_dir", type=str, default="data/spotify-kaggle/album_covers/")
     parser.add_argument("--lyrics_path", type=str, default="data/spotify-kaggle/interim/lyrics_dataset_10k_fixed.csv")
