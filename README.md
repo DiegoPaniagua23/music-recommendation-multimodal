@@ -140,7 +140,7 @@ Genera recomendaciones personalizadas para un usuario específico basándose en 
 ```bash
 uv run python -m src.inference \
   --mode recommend \
-  --user_id "user_000228" \
+  --user_id "user_000232" \
   --data_path "data/spotify-kaggle/interim/lastfm_spotify_merged.csv" \
   --mapper_path "data/spotify-kaggle/interim/item_id_mapper.json" \
   --model_path "checkpoints/complete/best_model_epoch1.pth" \
