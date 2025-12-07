@@ -97,25 +97,20 @@ def load_resources(args, device):
     state_dict = torch.load(args.model_path, map_location=device)
     
     # Infer dimensions from state_dict to ensure compatibility
+    if list(state_dict.keys())[0].startswith('module.'):
+        state_dict = {k.replace('module.', ''): v for k, v in state_dict.items()}
+
     # User Tower: country_embedding.weight -> (num_countries, embedding_dim)
     num_countries_ckpt = state_dict['user_tower.country_embedding.weight'].shape[0]
     
     # Item Tower: tabular_encoder.mlp.0.weight -> (hidden_dim, input_dim)
-    # Note: Linear layer weights are (out_features, in_features)
     tabular_dim_ckpt = state_dict['item_tower.tabular_encoder.mlp.0.weight'].shape[1]
     
     vocab_size = len(item_id_mapper) + 1
     
     # Check for encoders to set dimensions
-    # Note: In dataset.py, genre_encoder is for 'track_genre', not user gender. 
-    # User gender/country encoders are not explicitly handled in dataset.py shown, 
-    # but train.py assumes they might exist. 
-    # Let's stick to train.py logic:
     num_genders_user = len(ref_dataset.encoders['gender_encoder'].classes_) if 'gender_encoder' in ref_dataset.encoders else 1
     
-    # We use the checkpoint dimensions for country and tabular to avoid mismatch
-    # Ideally, we should load the fitted encoders from training, but if not available,
-    # we must respect the model's architecture.
     num_countries_user = num_countries_ckpt
     tabular_dim = tabular_dim_ckpt
     
@@ -140,14 +135,13 @@ def load_resources(args, device):
     return model, ref_dataset, df
 
 def index_catalog(args, model, ref_dataset, original_df, device):
-    logger.info("Indexing catalog...")
+    logger.info("Indexing catalog (Dense Matrix Strategy)...")
     
-    # Create a dataframe of unique tracks from the ORIGINAL dataframe (to avoid double encoding)
+    # Create a dataframe of unique tracks from the ORIGINAL dataframe
     unique_df = original_df.drop_duplicates('track_id').copy()
     
     # Add dummy user info to satisfy MultimodalDataset requirements
-    # We assign a unique dummy user to each row so history logic is trivial
-    unique_df['user_id'] = range(len(unique_df))
+    unique_df['user_id'] = 'dummy_user'
     unique_df['timestamp'] = '2020-01-01'
     
     # Create dataset for indexing
@@ -162,10 +156,14 @@ def index_catalog(args, model, ref_dataset, original_df, device):
     
     loader = DataLoader(catalog_dataset, batch_size=args.batch_size, shuffle=False, num_workers=4)
     
-    item_embeddings = []
+    embeddings_list = []
+    track_ids_list = []
     
     with torch.no_grad():
         for batch in tqdm(loader, desc="Encoding Items"):
+            # Save mapped integer IDs to place them correctly later
+            track_ids_list.append(batch['target_id'])
+
             # Move item features to device
             images = batch['target_image'].to(device)
             audio = batch['target_audio'].to(device) if batch['target_audio'] is not None else None
@@ -181,24 +179,36 @@ def index_catalog(args, model, ref_dataset, original_df, device):
                 tabular=tabular
             )
             
+            # Handle NaNs
+            if torch.isnan(emb).any():
+                emb = torch.nan_to_num(emb, nan=0.0)
+
             # Normalize embeddings (Cosine Similarity)
             emb = F.normalize(emb, p=2, dim=1, eps=1e-8)
             
-            item_embeddings.append(emb.cpu())
+            embeddings_list.append(emb.cpu())
             
-    item_embeddings = torch.cat(item_embeddings, dim=0)
+    # Concatenate all batches
+    all_embeddings = torch.cat(embeddings_list, dim=0) # (M, D)
+    all_ids = torch.cat(track_ids_list, dim=0)         # (M,)
+    
+    # Create Dense Matrix (Vocab_Size, D)
+    # Index 0 is padding/unknown
+    vocab_size = len(ref_dataset.item_id_mapper) + 1
+    embedding_dim = all_embeddings.shape[1]
+    
+    dense_embeddings = torch.zeros(vocab_size, embedding_dim)
+    
+    # Scatter embeddings to their correct integer ID positions
+    # This ensures dense_embeddings[i] corresponds to item_id_mapper ID 'i'
+    dense_embeddings[all_ids.long()] = all_embeddings
     
     # Save Embeddings
     os.makedirs(os.path.dirname(args.index_path), exist_ok=True)
-    torch.save(item_embeddings, args.index_path)
-    logger.info(f"Item embeddings saved to {args.index_path}")
+    torch.save(dense_embeddings, args.index_path)
+    logger.info(f"Dense item index saved to {args.index_path} (Shape: {dense_embeddings.shape})")
     
-    # Save Metadata (in the same order as embeddings)
-    metadata = unique_df[['track_id', 'artist_name', 'track_name', 'album_name']].to_dict('records')
-    meta_path = args.index_path.replace('.pt', '_meta.json')
-    with open(meta_path, 'w') as f:
-        json.dump(metadata, f)
-    logger.info(f"Metadata saved to {meta_path}")
+    # We don't need _meta.json anymore because we can map Int -> TrackID -> DF Metadata
 
 def recommend_for_user(args, model, ref_dataset, device):
     logger.info(f"Generating recommendations for User ID: {args.user_id}")
@@ -208,14 +218,20 @@ def recommend_for_user(args, model, ref_dataset, device):
         logger.error(f"Index not found at {args.index_path}. Run with --mode index first.")
         raise FileNotFoundError(f"Index not found at {args.index_path}. Run with --mode index first.")
         
+    # Load dense tensor (Vocab_Size, D)
     item_embeddings = torch.load(args.index_path, map_location=device)
     
-    meta_path = args.index_path.replace('.pt', '_meta.json')
-    with open(meta_path, 'r') as f:
-        metadata = json.load(f)
+    # 2. Prepare Metadata Lookup
+    # Create a fast lookup dict: track_id -> {artist, name, album}
+    # We use the dataframe loaded in load_resources
+    logger.info("Building metadata lookup...")
+    meta_df = ref_dataset.interactions_df[['track_id', 'artist_name', 'track_name', 'album_name']].drop_duplicates('track_id')
+    meta_dict = meta_df.set_index('track_id').to_dict('index')
+    
+    # Invert mapper: Int ID -> Track ID string
+    id_to_track = {v: k for k, v in ref_dataset.item_id_mapper.items()}
         
-    # 2. Get User History
-    # We look up the user in the original dataframe
+    # 3. Get User History
     user_history_df = ref_dataset.interactions_df[ref_dataset.interactions_df['user_id'] == args.user_id]
     
     if len(user_history_df) == 0:
@@ -230,16 +246,13 @@ def recommend_for_user(args, model, ref_dataset, device):
     history_track_ids = user_history_df['track_id'].tolist()
     print(f"\nTotal User History ({len(history_track_ids)} items)")
             
-    # 3. Prepare User Input
-    # We need to construct the input tensors for the User Tower
-    # We can use the dataset's logic manually or create a dummy row
-    
+    # 4. Prepare User Input
     # Map track IDs to integers
     history_ints = [ref_dataset.item_id_mapper.get(tid, 0) for tid in history_track_ids]
-    # Truncate/Pad
-    max_len = 50 # Should match training
     
-    # Identify which items are actually used (the last max_len items)
+    # Truncate to max_len (same as training)
+    max_len = 50 
+    
     used_history_track_ids = history_track_ids
     if len(history_ints) > max_len:
         history_ints = history_ints[-max_len:]
@@ -247,8 +260,7 @@ def recommend_for_user(args, model, ref_dataset, device):
         
     print(f"\nUser History Considered (Last {len(used_history_track_ids)} items):")
     for i, tid in enumerate(used_history_track_ids):
-        # Find metadata
-        meta = next((m for m in metadata if m['track_id'] == tid), None)
+        meta = meta_dict.get(tid)
         if meta:
             print(f"  {i+1}. {meta['artist_name']} - {meta['track_name']}")
         else:
@@ -256,16 +268,14 @@ def recommend_for_user(args, model, ref_dataset, device):
     
     history_tensor = torch.tensor([history_ints], dtype=torch.long).to(device)
     
-    # Get User Attributes from the dataset (processed in __init__)
-    # We assume gender and country are constant for the user, so we take the first value
-    # Note: ref_dataset.interactions_df already has 'gender_idx' and 'country_idx' columns
+    # Get User Attributes
     gender_idx = user_history_df['gender_idx'].iloc[0]
     country_idx = user_history_df['country_idx'].iloc[0]
     
     user_gender = torch.tensor([gender_idx], dtype=torch.long).to(device)
     user_country = torch.tensor([country_idx], dtype=torch.long).to(device)
     
-    # 4. Get User Embedding
+    # 5. Get User Embedding
     with torch.no_grad():
         user_emb = model.get_user_embedding(
             history_ids=history_tensor,
@@ -275,31 +285,42 @@ def recommend_for_user(args, model, ref_dataset, device):
         # Normalize user embedding
         user_emb = F.normalize(user_emb, p=2, dim=1, eps=1e-8)
         
-    # 5. Compute Similarity
-    # (1, D) @ (N, D).T -> (1, N)
-    scores = torch.matmul(user_emb, item_embeddings.to(device).t())
-    scores = scores.squeeze(0) # (N,)
+    # 6. Compute Similarity
+    # (1, D) @ (Vocab, D).T -> (1, Vocab)
+    # The indices of 'scores' correspond exactly to the Integer IDs in the mapper
+    scores = torch.matmul(user_emb, item_embeddings.t())
+    scores = scores.squeeze(0) # (Vocab,)
     
-    # 6. Filter out history (optional but recommended)
-    # Set score of history items to -inf
-    # We need to map history track_ids to indices in the 'metadata' list
-    # This is slow O(N*M), better to have a map
-    track_id_to_idx = {m['track_id']: i for i, m in enumerate(metadata)}
+    # 7. Filter out history and padding
+    # Mask padding (index 0)
+    scores[0] = -float('inf')
     
-    for tid in history_track_ids:
-        if tid in track_id_to_idx:
-            idx = track_id_to_idx[tid]
-            scores[idx] = -float('inf')
+    # Mask history items
+    # We already have history_ints
+    for h_idx in history_ints:
+        if h_idx < len(scores):
+            scores[h_idx] = -float('inf')
             
-    # 7. Top-K
+    # 8. Top-K
     k = 10
     topk_scores, topk_indices = torch.topk(scores, k=k)
     
     print(f"\nTop {k} Recommendations:")
-    for rank, idx in enumerate(topk_indices.cpu().numpy()):
-        meta = metadata[idx]
+    for rank, idx_tensor in enumerate(topk_indices):
+        idx = idx_tensor.item()
         score = topk_scores[rank].item()
-        print(f"  {rank+1}. {meta['artist_name']} - {meta['track_name']} (Score: {score:.4f})")
+        
+        # Convert Int ID -> Track ID
+        track_id = id_to_track.get(idx)
+        
+        if track_id:
+            meta = meta_dict.get(track_id)
+            if meta:
+                print(f"  {rank+1}. {meta['artist_name']} - {meta['track_name']} (Score: {score:.4f})")
+            else:
+                print(f"  {rank+1}. Track ID: {track_id} (Metadata not found) (Score: {score:.4f})")
+        else:
+            print(f"  {rank+1}. Unknown Index: {idx} (Score: {score:.4f})")
 
 def main():
     parser = argparse.ArgumentParser(description="Inference for Music Recommendation")
