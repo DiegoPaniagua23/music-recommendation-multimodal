@@ -131,7 +131,7 @@ uv run python -m src.inference \
   --mapper_path "data/spotify-kaggle/interim/item_id_mapper.json" \
   --model_path "checkpoints/complete/best_model_epoch1.pth" \
   --encoders_path "checkpoints/complete/encoders.pkl" \
-  --index_path "checkpoints/item_index_epoch1.pt"
+  --index_path "checkpoints/complete/item_index_epoch1.pt"
 ```
 
 ### Paso 2: Recomendación (`recommend`)
@@ -140,12 +140,12 @@ Genera recomendaciones personalizadas para un usuario específico basándose en 
 ```bash
 uv run python -m src.inference \
   --mode recommend \
-  --user_id "user_000238" \
+  --user_id "user_000228" \
   --data_path "data/spotify-kaggle/interim/lastfm_spotify_merged.csv" \
   --mapper_path "data/spotify-kaggle/interim/item_id_mapper.json" \
-  --model_path "checkpoints/best_model.pth" \
-  --encoders_path "checkpoints/encoders.pkl" \
-  --index_path "checkpoints/item_index.pt"
+  --model_path "checkpoints/complete/best_model_epoch1.pth" \
+  --encoders_path "checkpoints/complete/encoders.pkl" \
+  --index_path "checkpoints/complete/item_index_epoch1.pt"
 ```
 
 -----
