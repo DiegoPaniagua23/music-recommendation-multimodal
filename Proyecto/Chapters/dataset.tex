@@ -1,0 +1,46 @@
+% Dataset
+\section{Base de Datos y Recolección}
+\label{sec:dataset}
+
+Para este trabajo, se construyó un dataset multimodal \textit{ad-hoc} que integra información de audio, texto, imágenes y metadatos tabulares, alineados con un historial de interacciones de usuarios. El conjunto de datos base consta de 10,000 canciones únicas y más de 3 millones de interacciones provenientes de aproximadamente 850 usuarios de la plataforma Last.fm. A continuación, se detalla el proceso de adquisición y procesamiento para cada modalidad.
+
+\subsection{Interacciones y Metadatos (Last.fm y Spotify)}
+Los datos de interacción usuario-ítem se obtuvieron de Last.fm, recopilando eventos de reproducción que incluyen metadatos del usuario (género, país de residencia) y detalles de la reproducción (tiempo, canción). Complementariamente, se utilizaron identificadores de pistas (\textit{Track IDs}) de un dataset de Spotify disponible en Kaggle para enriquecer cada ítem con características tabulares de alto nivel, como \textit{danceability}, \textit{mood} y género musical.
+
+\subsection{Audio (YouTube)}
+La recolección de los archivos de audio se realizó mediante un script personalizado que utiliza la herramienta \texttt{yt-dlp}.
+\begin{itemize}
+    \item \textbf{Adquisición}: se generaron búsquedas optimizadas en YouTube utilizando los metadatos limpios (artista y título). El script fue configurado para priorizar videos etiquetados como `Audio' o de alta calidad (\texttt{bestaudio}). Dado el volumen de descargas, se emplearon VPNs rotativas para mitigar bloqueos por actividad automatizada.
+    \item \textbf{Preprocesamiento}:
+    \begin{itemize}
+        \item \textbf{Recorte Temporal (Windowing)}: se extrajo un segmento de 30 segundos por canción, específicamente del intervalo 00:30 a 01:00, para capturar la estructura representativa del tema (generalmente el coro o verso principal) y evitar introducciones silenciosas o irrelevantes.
+        \item \textbf{Remuestreo (Downsampling)}: los audios originales de 44.1 kHz fueron remuestreados a 22.05 kHz. Siguiendo el Teorema de Nyquist, esta frecuencia es suficiente para representar componentes espectrales de hasta 11 kHz, donde reside la mayor parte de la información tímbrica distintiva de los géneros musicales, reduciendo el tamaño del archivo y la carga computacional a la mitad sin pérdida significativa de información relevante para la tarea.
+        \item \textbf{Mezcla a Mono}: se convirtieron los canales estéreo a un solo canal mono. La información espacial estéreo se consideró irrelevante para la clasificación de género y recomendación basada en contenido, simplificando así la entrada al modelo.
+    \end{itemize}
+\end{itemize}
+
+\subsection{Texto (Genius)}
+Las letras de las canciones (\textit{lyrics}) se obtuvieron mediante la API de Genius. Se implementó una estrategia de búsqueda en cascada para maximizar la coincidencia.
+\begin{itemize}
+    \item \textbf{Cobertura}: se logró recuperar la letra para aproximadamente 8,500 canciones (85\% del dataset).
+    \item \textbf{Datos Faltantes}: el 15\% restante corresponde principalmente a música instrumental, bandas sonoras (e.g., Hans Zimmer) o piezas clásicas que carecen de contenido lírico. Para estos casos, se utilizó un token especial de `vacío' en el modelo de lenguaje.
+\end{itemize}
+
+\subsection{Imágenes (Spotify)}
+Utilizando la librería \texttt{Spotipy} y los \textit{Track IDs}, se consultó la API de Spotify para obtener las carátulas de los álbumes. La API proporciona imágenes en tres resoluciones (640x640, 300x300, 64x64). Se seleccionó la resolución de 300x300 píxeles, ofreciendo un balance óptimo entre calidad visual para la red convolucional (ResNet-18) y eficiencia en almacenamiento.
+
+\begin{table}[htbp]
+\centering
+\caption{Resumen del dataset multimodal construido.}
+\begin{tabular}{c c m{6cm}}
+\toprule
+\textbf{Modalidad} & \textbf{Fuente} & \textbf{Detalles Técnicos} \\
+\midrule
+Interacciones & Last.fm & $>$3M eventos, ~850 usuarios. \\
+Audio         & YouTube & Clips 30s (00:30-01:00), 22.05 kHz, Mono. \\
+Texto         & Genius & ~8.5K letras recuperadas. \\
+Imagen        & Spotify & Portadas redimensionadas a 300x300. \\
+Tabular       & Spotify & Features de audio (danceability, energy, etc.) \\
+\bottomrule
+\end{tabular}
+\end{table}

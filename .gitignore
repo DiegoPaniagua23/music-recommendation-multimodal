@@ -210,3 +210,39 @@ __marimo__/
 data/
 /data
 /papers
+
+# --- LaTeX ---
+# Archivos temporales de compilación LaTeX
+*.aux
+*.bbl
+*.blg
+*.log
+*.out
+*.toc
+*.lot
+*.lof
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.xmpi
+*.xmpdata
+*.nav
+*.snm
+*.vrb
+
+# Archivos de respaldo de editores
+*~
+*.swp
+*.bak
+
+# Ignorar todos los PDFs por defecto (builds intermedios)
+*.pdf
+
+# Excepciones: Permitir subir el PDF final en la carpeta Out
+!Proyecto/Out/
+!Proyecto/Out/main.pdf
+
+# Excepciones: Permitir PDFs que sean recursos (papers, figuras estáticas)
+!papers/*.pdf
+!Proyecto/imagenes_reporte/*.pdf
+!data/**/*.pdf

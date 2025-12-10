@@ -1,0 +1,23 @@
+% Trabajos Relacionados
+\section{Trabajos Relacionados}
+\label{sec:relacionados}
+
+El desarrollo de sistemas de recomendación efectivos requiere abordar tanto la naturaleza dinámica de las preferencias de los usuarios como la riqueza de información contenida en los ítems. En esta sección, analizamos la literatura existente en torno a dos pilares fundamentales: los modelos secuenciales y el aprendizaje multimodal. Además, contrastamos los enfoques clásicos con las técnicas de aprendizaje profundo y destacamos cómo nuestra propuesta integra estos avances en una arquitectura unificada para superar las limitaciones de los trabajos previos.
+
+\subsection{Modelos Secuenciales}
+\citet{hidasi2015session} introdujeron RNNs para recomendaciones basadas en sesiones, capturando dinámicas temporales pero ignorando el contenido, lo que limita su desempeño en \textit{cold-start}.
+
+\subsection{Aprendizaje Multimodal}
+\citet{oramas2018multimodal} combinaron texto, audio e imagen mediante fusión temprana, superando modelos unimodales pero sin mecanismos de atención. \citet{won2020multimodal} utilizaron aprendizaje métrico con redes siamesas para recuperación basada en etiquetas, destacando la importancia de espacios latentes compartidos.
+
+\subsection{Enfoques Clásicos vs. Deep Learning}
+\citet{murauer2018detecting} mostraron la eficacia de XGBoost con características artesanales para clasificación de géneros. En contraste, nuestra propuesta utiliza Deep Learning (ResNet-18) para extraer características jerárquicas automáticamente.
+
+\subsection{Diferenciación de la Propuesta}
+A diferencia de los trabajos previos, este proyecto propone una arquitectura \textit{Two-Tower} que:
+\begin{itemize}
+    \item Integra cuatro modalidades (audio, texto, imagen, tabular) mediante \textit{Late Fusion}.
+    \item Combina codificación secuencial del usuario con representaciones ricas de contenido.
+    \item Utiliza técnicas eficientes como LoRA para texto.
+\end{itemize}
+

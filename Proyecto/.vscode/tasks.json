@@ -1,0 +1,14 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "compile-latex",
+			"type": "shell",
+			"command": "pdflatex -interaction=nonstopmode -output-directory=mir_reporte main.tex",
+			"args": [],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		}
+	]
+}

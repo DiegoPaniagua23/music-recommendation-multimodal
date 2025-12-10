@@ -1,0 +1,67 @@
+Total User History (21830 items)
+
+User History Considered (Last 50 items):
+  1. Linkin Park - New Divide
+  2. Linkin Park - New Divide
+  3. Linkin Park - New Divide
+  4. Linkin Park - New Divide
+  5. Angel Y Khriz - Na De Na
+  6. Angel Y Khriz - Na De Na
+  7. Angel Y Khriz - Na De Na
+  8. Angel Y Khriz - Na De Na
+  9. Angel Y Khriz - Na De Na
+  10. Angel Y Khriz - Na De Na
+  11. Angel Y Khriz - Na De Na
+  12. Angel Y Khriz - Na De Na
+  13. 3Oh!3 - STARSTRUKK (feat. Katy Perry)
+  14. 3Oh!3 - STARSTRUKK (feat. Katy Perry)
+  15. Fool'S Garden - Lemon Tree
+  16. Nickelback - How You Remind Me
+  17. Nickelback - How You Remind Me
+  18. Nickelback - How You Remind Me
+  19. Nickelback - How You Remind Me
+  20. Fall Out Boy - I Don't Care
+  21. Aqualung - Brighter Than Sunshine
+  22. Aqualung - Brighter Than Sunshine
+  23. Linkin Park - Numb
+  24. Linkin Park - Numb
+  25. Linkin Park - Numb
+  26. Linkin Park - Numb
+  27. Linkin Park - Numb
+  28. Bryan Adams - (Everything I Do) I Do It For You
+  29. Bryan Adams - (Everything I Do) I Do It For You
+  30. Bryan Adams - (Everything I Do) I Do It For You
+  31. Bryan Adams - (Everything I Do) I Do It For You
+  32. Bryan Adams - (Everything I Do) I Do It For You
+  33. Bryan Adams - (Everything I Do) I Do It For You
+  34. Shakira - Hips Don't Lie (feat. Wyclef Jean)
+  35. Shakira - Hips Don't Lie (feat. Wyclef Jean)
+  36. Linkin Park - One Step Closer
+  37. Linkin Park - One Step Closer
+  38. Linkin Park - One Step Closer
+  39. Linkin Park - One Step Closer
+  40. Linkin Park - One Step Closer
+  41. Matchbox Twenty - How Far We've Come
+  42. The Monkees - I'm a Believer
+  43. Shania Twain - You're Still The One
+  44. Shania Twain - You're Still The One
+  45. Shania Twain - You're Still The One
+  46. Shania Twain - You're Still The One
+  47. Jane'S Addiction - Jane Says
+  48. Jane'S Addiction - Jane Says
+  49. Filter - Take A Picture
+  50. Filter - Take A Picture
+/home/gus/Proyectos/music-recommendation-multimodal/.venv/lib/python3.10/site-packages/torch/nn/functional.py:6044: UserWarning: Support for mismatched src_key_padding_mask and mask is deprecated. Use same type for both instead.
+  warnings.warn(
+
+Top 10 Recommendations:
+  1. Belanova - Tus Ojos (Score: 0.5717)
+  2. Selena - Bidi Bidi Bom Bom (Score: 0.5699)
+  3. Aleks Syntek - Sexo Pudor Y Lágrimas (Score: 0.5675)
+  4. Mats Ronander - Gör mig lycklig nu (Score: 0.5613)
+  5. Juanes - Fotografía (Score: 0.5585)
+  6. Lara Fabian - J’ai Zappé (Score: 0.5371)
+  7. Los Amigos Invisibles - Quiero Desintegrar a Tu Novio (Score: 0.5362)
+  8. Selena - Como La Flor (Score: 0.5256)
+  9. Belanova - Rosa Pastel (Score: 0.5255)
+  10. Selena - El Chico Del Apartamento 512 (Score: 0.5251)

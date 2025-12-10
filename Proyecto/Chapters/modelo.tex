@@ -1,0 +1,72 @@
+% Modelo
+\section{Propuesta: Modelo Desarrollado}
+\label{sec:modelo}
+
+Se propone una arquitectura \textit{Two-Tower} híbrida que combina la codificación secuencial del historial del usuario mediante un Transformer (estilo SASRec) con una representación multimodal del ítem musical. Ambas torres proyectan sus entradas a un espacio latente común de dimensión $d=256$, optimizado mediante una función de pérdida contrastiva InfoNCE.
+
+\subsection{Arquitectura del Modelo}
+
+\subsubsection{Torre del Usuario (Sequential User Encoder)}
+A diferencia de los enfoques tradicionales basados en RNNs, empleamos un codificador basado en Transformer para capturar dependencias a largo plazo en el historial de escucha.
+\begin{itemize}
+    \item \textbf{Entrada}: secuencia de IDs de canciones ($L=50$) más atributos demográficos (género, país).
+    \item \textbf{Codificación}: se suman \textit{embeddings} de ítem y posicionales aprendibles. La secuencia pasa por un \textit{Transformer Encoder} de 2 capas y 4 cabezas de atención ($d_{model}=256$).
+    \item \textbf{Fusión de Usuario}: la salida del Transformer (estado correspondiente al último ítem) se concatena con los \textit{embeddings} de género ($d=16$) y país ($d=32$), y se proyecta mediante un MLP a la dimensión final de 256.
+\end{itemize}
+
+\begin{figure}[htbp]
+    \centering
+    \resizebox{1.0\textwidth}{!}{\input{Figures/Tikz/user_tower.tex}}
+    \caption{Arquitectura de la Torre del Usuario. Se muestra el procesamiento secuencial con Transformer y la integración de atributos demográficos.}
+    \label{fig:user_tower}
+\end{figure}
+
+\subsubsection{Torre del Ítem Multimodal}
+Para capturar la naturaleza heterogénea de la música, se emplean codificadores especializados para cada modalidad, integrados mediante fusión tardía. Cada codificador proyecta su modalidad a un vector de dimensión $d=128$.
+\begin{itemize}
+    \item \textbf{Audio}: se procesan espectrogramas de Mel (1 canal) mediante una ResNet-18 modificada. A diferencia de la visión, no se utilizan pesos preentrenados, ya que los patrones espectrales difieren estructuralmente de las imágenes naturales.
+    \item \textbf{Visual}: las carátulas de álbumes se codifican con una ResNet-18 inicializada con pesos de ImageNet, aprovechando la transferencia de aprendizaje para características estéticas.
+    \item \textbf{Texto}: las letras y metadatos se procesan con mDeBERTa-v3-base. Se aplica LoRA (Rango=8, Alpha=32) a las proyecciones \textit{query} y \textit{value} para un ajuste fino eficiente, seguido de \textit{Mean Pooling}.
+    \item \textbf{Tabular}: características numéricas y categóricas se procesan mediante un MLP de dos capas con \textit{Batch Normalization} y \textit{Dropout}.
+\end{itemize}
+
+\begin{figure}[htbp]
+    \centering
+    \resizebox{1.0\textwidth}{!}{\input{Figures/Tikz/item_tower.tex}}
+    \caption{Arquitectura de la Torre del Ítem Multimodal. Se ilustran los cuatro codificadores especializados y el módulo de fusión tardía.}
+    \label{fig:item_tower}
+\end{figure}
+
+Fusión: los cuatro vectores de 128 dimensiones se concatenan ($d_{total}=512$) y pasan por un bloque de fusión (Linear $\rightarrow$ BN $\rightarrow$ ReLU $\rightarrow$ Dropout $\rightarrow$ Linear) que reduce la dimensión a 256, finalizando con una capa \textit{LayerNorm}.
+
+\subsubsection{Modelo Two-Tower}
+La arquitectura global integra el \textit{Sequential User Encoder} y el \textit{Multimodal Item Encoder} en un marco de aprendizaje contrastivo (ver Figura \ref{fig:two_towers_full}). El objetivo principal es alinear las representaciones de usuarios e ítems en un espacio latente compartido, donde la proximidad geométrica refleja la afinidad o probabilidad de interacción.
+
+\paragraph{Espacio Latente y Normalización}
+Ambas torres proyectan sus entradas a vectores de dimensión $d=256$. Un paso crucial en nuestra implementación es la normalización $L_2$ de los embeddings de salida, $\mathbf{u}$ y $\mathbf{i}$, antes del cálculo de similitud. Esto restringe los vectores a una hiperesfera unitaria, haciendo que el producto punto sea equivalente a la similitud coseno:
+\begin{equation}
+    \text{sim}(\mathbf{u}, \mathbf{i}) = \frac{\mathbf{u} \cdot \mathbf{i}}{\|\mathbf{u}\| \|\mathbf{i}\|} = \mathbf{u} \cdot \mathbf{i} \quad (\text{si } \|\mathbf{u}\|=\|\mathbf{i}\|=1)
+\end{equation}
+
+\paragraph{Función de Pérdida InfoNCE Simétrica}
+Para el entrenamiento, utilizamos la función de pérdida InfoNCE (Information Noise Contrastive Estimation), adaptada para considerar la simetría entre usuarios e ítems (similar a CLIP). Dado un lote de tamaño $B$, calculamos la matriz de logits escalada por una temperatura aprendible $\tau$ (inicializada en 0.07):
+\begin{equation}
+    \text{logits} = \frac{\mathbf{U} \mathbf{I}^T}{\tau}
+\end{equation}
+La pérdida total es el promedio de la pérdida usuario-a-ítem ($\mathcal{L}_{u2i}$) y la pérdida ítem-a-usuario ($\mathcal{L}_{i2u}$), lo que maximiza la similitud de los pares positivos (diagonal) y minimiza la de los negativos (fuera de la diagonal) en ambas direcciones. Además, implementamos un enmascaramiento de colisiones para evitar penalizar falsos negativos cuando un mismo usuario aparece múltiples veces en el mismo lote.
+
+\begin{figure}[h]
+    \centering
+    \resizebox{0.95\textwidth}{!}{\input{Figures/Tikz/two-towers.tex}}
+    \caption{Arquitectura General Two-Tower Multimodal. La arquitectura integra una Torre de Usuario (izquierda) que modela preferencias secuenciales mediante un Transformer, y una Torre de Ítem (derecha) que fusiona representaciones de audio, texto, imagen y metadatos. Ambas proyecciones se alinean en un espacio latente compartido optimizado mediante InfoNCE.}
+    \label{fig:two_towers_full}
+\end{figure}
+%\clearpage
+
+\subsection{Entrenamiento e Implementación}
+
+El modelo se entrena optimizando la función de pérdida InfoNCE con temperatura $\tau=0.07$, que maximiza la similitud coseno entre el usuario y el ítem positivo mientras la minimiza frente a los otros ítems del lote (\textit{in-batch negatives}).
+\begin{equation}
+\mathcal{L} = -\log \frac{\exp(\text{sim}(\mathbf{u}, \mathbf{i}^+) / \tau)}{\sum_{j=1}^{B} \exp(\text{sim}(\mathbf{u}, \mathbf{i}_j) / \tau)}
+\end{equation}
+La implementación se realizó en \texttt{PyTorch} con soporte para entrenamiento distribuido (DDP) y precisión mixta (AMP). Se utilizó el optimizador AdamW ($lr=1e-4$, $batch\_size=64$) durante 10 épocas.

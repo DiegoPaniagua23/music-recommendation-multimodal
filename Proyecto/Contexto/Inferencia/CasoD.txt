@@ -1,0 +1,67 @@
+Total User History (457 items)
+
+User History Considered (Last 50 items):
+  1. Bonnie Tyler - Total Eclipse of the Heart
+  2. Bonnie Tyler - Total Eclipse of the Heart
+  3. Alicia Keys - If I Ain't Got You
+  4. Dido - Thank You
+  5. At17 - The Best Is Yet To Come
+  6. Alicia Keys - If I Ain't Got You
+  7. Dido - Thank You
+  8. Nelly Furtado - Maneater
+  9. Nelly Furtado - Maneater
+  10. Nelly Furtado - Maneater
+  11. Nelly Furtado - Maneater
+  12. Nelly Furtado - Maneater
+  13. Nelly Furtado - Maneater
+  14. Alicia Keys - If I Ain't Got You
+  15. Dido - Thank You
+  16. Priscilla Ahn - Dream
+  17. Alicia Keys - If I Ain't Got You
+  18. Dido - Thank You
+  19. Alicia Keys - If I Ain't Got You
+  20. Dido - Thank You
+  21. F.I.R. - 你的微笑
+  22. Elvis Presley - Suspicious Minds (Film Edit)
+  23. Elvis Presley - Suspicious Minds (Film Edit)
+  24. Elvis Presley - Suspicious Minds
+  25. Elvis Presley - Suspicious Minds
+  26. Elvis Presley - Suspicious Minds
+  27. Elvis Presley - Suspicious Minds
+  28. My Little Airport - 只因當時太緊張
+  29. Dreams Come True - JET!!!
+  30. Duffy - Warwick Avenue
+  31. Duffy - Warwick Avenue
+  32. Duffy - Mercy
+  33. Duffy - Mercy
+  34. Duffy - Mercy
+  35. Duffy - Warwick Avenue
+  36. Duffy - Warwick Avenue
+  37. Duffy - Mercy
+  38. Duffy - Mercy
+  39. Duffy - Mercy
+  40. Jay-Jay Johanson - Quel Dommage
+  41. Alicia Keys - If I Ain't Got You
+  42. Dido - Thank You
+  43. Noisettes - Don't Upset The Rhythm (Go Baby Go)
+  44. Noisettes - Never Forget You
+  45. Noisettes - Never Forget You
+  46. Noisettes - Don't Upset The Rhythm (Go Baby Go)
+  47. Duffy - Mercy
+  48. Duffy - Mercy
+  49. Duffy - Mercy
+  50. Vetusta Morla - Copenhague
+/home/gus/Proyectos/music-recommendation-multimodal/.venv/lib/python3.10/site-packages/torch/nn/functional.py:6044: UserWarning: Support for mismatched src_key_padding_mask and mask is deprecated. Use same type for both instead.
+  warnings.warn(
+
+Top 10 Recommendations:
+  1. Eva Dahlgren - Ängeln i rummet (Score: 0.5391)
+  2. Mats Ronander - Gör mig lycklig nu (Score: 0.5288)
+  3. Andrea Bocelli - L'appuntamento (Sentado a 'beira do caminho) (Score: 0.5196)
+  4. Fiona Apple - Paper Bag (Score: 0.5126)
+  5. Andrea Bocelli - Cuando Me Enamoro (Score: 0.5113)
+  6. Dlg - A Veces Me Pregunto (Score: 0.5092)
+  7. Katherine Jenkins - Nella Fantasia (Score: 0.4966)
+  8. Eliane Elias - Time Alone (Score: 0.4954)
+  9. Lara Fabian - J’ai Zappé (Score: 0.4917)
+  10. Everything But The Girl - Each and Every One (Score: 0.4916)
