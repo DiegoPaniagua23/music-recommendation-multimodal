@@ -1,0 +1,6 @@
+outs:
+- md5: a1c6c2cdac0f0293bfc035cb47bfbbad.dir
+  size: 1234015345
+  nfiles: 4
+  hash: md5
+  path: prueba_10porciento

@@ -120,9 +120,9 @@ class SequentialUserEncoder(nn.Module):
         
         # Calcular longitudes reales
         if history_mask is not None:
-            lengths = history_mask.sum(dim=1) - 1 # Índice es longitud - 1
+            lengths = history_mask.sum(dim=1).long() - 1 # Índice es longitud - 1
         else:
-            lengths = (history_ids != 0).sum(dim=1) - 1
+            lengths = (history_ids != 0).sum(dim=1).long() - 1
             
         # Clamp para evitar -1 si la secuencia está vacía (no debería pasar si se filtra)
         lengths = lengths.clamp(min=0)
