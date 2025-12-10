@@ -241,10 +241,10 @@ model_cache/
 *.pdf
 
 # Excepciones: Permitir subir el PDF final en la carpeta Out
-!Proyecto/Out/
-!Proyecto/Out/main.pdf
+!Reporte/Out/
+!Reporte/Out/main.pdf
 
 # Excepciones: Permitir PDFs que sean recursos (papers, figuras estáticas)
 !papers/*.pdf
-!Proyecto/imagenes_reporte/*.pdf
+!Reporte/imagenes_reporte/*.pdf
 !data/**/*.pdf
