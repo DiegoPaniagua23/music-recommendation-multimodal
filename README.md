@@ -62,7 +62,7 @@ uv sync
 ### 3. Configurar Datos (DVC)
 
 ⚠️ **Aviso de Privacidad y Copyright:**
-El dataset completo contiene material protegido por derechos de autor (letras, carátulas, audio) y **no es de acceso público**. Los archivos `.dvc` en este repositorio son solo metadatos (punteros). El almacenamiento remoto está restringido.
+El dataset completo **no es de acceso público**. Los archivos `.dvc` en este repositorio son solo metadatos (punteros). El almacenamiento remoto está restringido.
 
 Para reproducir los experimentos, es necesario solicitar acceso a los autores. Si eres un colaborador autorizado, configura tus credenciales de Google Drive:
 
@@ -175,15 +175,8 @@ uv run python -m src.inference \
 
 ```
 .
-├── checkpoints/        # Punteros DVC a modelos entrenados y encoders
-├── config/             # Archivos de configuración (cookies, proxies)
-├── data/               # Datos (gestionado por DVC)
-│   ├── audio/          # Spectrogramas y audio raw
-│   └── spotify-kaggle/ # Dataset de metadatos, imágenes y letras
-├── docs/               # Documentación del proyecto
-├── logs/               # Logs de ejecución
+├── checkpoints/        # Punteros DVC (.dvc) a modelos y encoders
 ├── notebooks/          # Jupyter Notebooks para EDA y prototipado
-├── papers/             # Referencias bibliográficas
 ├── report/             # Código fuente LaTeX del reporte técnico
 │   ├── chapters/       # Capítulos del reporte
 │   └── images/         # Figuras y diagramas
@@ -196,6 +189,9 @@ uv run python -m src.inference \
 │   ├── evaluate_metrics.py
 │   ├── inference.py
 │   └── train.py
+├── data.dvc            # Puntero DVC al dataset (audio, imágenes, metadatos)
+├── logs.dvc            # Puntero DVC a los logs de ejecución
+├── papers.dvc          # Puntero DVC a referencias bibliográficas
 ├── LICENSE
 ├── README.md
 ├── pyproject.toml      # Configuración de dependencias (uv)
