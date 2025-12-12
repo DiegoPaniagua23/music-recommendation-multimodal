@@ -4,7 +4,7 @@ import pandas as pd
 import json
 import joblib
 import logging
-from src.dataset import MultimodalDataset
+from src.data.dataset import MultimodalDataset
 
 # Configure logging
 logging.basicConfig(
