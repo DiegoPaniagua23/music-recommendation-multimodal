@@ -16,6 +16,8 @@ El modelo alinea dos espacios vectoriales:
 
 ## 🏗️ Arquitectura del Sistema
 
+![Arquitectura Two-Tower](report/images/architecture.png)
+
 El sistema se basa en una arquitectura **Two-Tower** que aprende representaciones vectoriales (embeddings) tanto para usuarios como para ítems en un espacio métrico compartido.
 
 ### 1. User Tower (Secuencial)
@@ -173,17 +175,31 @@ uv run python -m src.inference \
 
 ```
 .
-├── data/               # Datos crudos y procesados (gestionado por DVC)
+├── checkpoints/        # Punteros DVC a modelos entrenados y encoders
+├── config/             # Archivos de configuración (cookies, proxies)
+├── data/               # Datos (gestionado por DVC)
+│   ├── audio/          # Spectrogramas y audio raw
+│   └── spotify-kaggle/ # Dataset de metadatos, imágenes y letras
+├── docs/               # Documentación del proyecto
+├── logs/               # Logs de ejecución
 ├── notebooks/          # Jupyter Notebooks para EDA y prototipado
-├── src/                # Código fuente
-│   ├── dataset.py      # Clase MultimodalDataset y lógica de carga
-│   ├── models/         # Definición de arquitecturas (TwoTower, Encoders)
-│   ├── train.py        # Script de entrenamiento
-│   ├── inference.py    # Script de inferencia y recomendación
-│   └── evaluate_metrics.py # Script de evaluación
-├── checkpoints/        # Modelos entrenados y encoders guardados
-├── pyproject.toml      # Dependencias y configuración del proyecto
-└── uv.lock             # Lockfile de dependencias
+├── papers/             # Referencias bibliográficas
+├── report/             # Código fuente LaTeX del reporte técnico
+│   ├── chapters/       # Capítulos del reporte
+│   └── images/         # Figuras y diagramas
+├── src/                # Código fuente del sistema
+│   ├── data/           # Scripts de descarga y procesamiento
+│   ├── models/         # Arquitecturas (TwoTower, Encoders)
+│   ├── scripts/        # Scripts de utilidad (check embeddings, download)
+│   ├── utils/          # Funciones auxiliares (monitor, stats)
+│   ├── dataset.py      # Clase MultimodalDataset
+│   ├── evaluate_metrics.py
+│   ├── inference.py
+│   └── train.py
+├── LICENSE
+├── README.md
+├── pyproject.toml      # Configuración de dependencias (uv)
+└── uv.lock
 ```
 
 -----
