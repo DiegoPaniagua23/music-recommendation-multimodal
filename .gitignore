@@ -117,3 +117,4 @@ coverage.xml
 dmypy.json
 *.abs
 report/Out/
+docs/

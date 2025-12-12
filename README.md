@@ -59,7 +59,10 @@ uv sync
 
 ### 3. Configurar Datos (DVC)
 
-Para descargar los datos, necesitas configurar las credenciales de Google Drive. Ejecuta los siguientes comandos:
+⚠️ **Aviso de Privacidad y Copyright:**
+El dataset completo contiene material protegido por derechos de autor (letras, carátulas, audio) y **no es de acceso público**. Los archivos `.dvc` en este repositorio son solo metadatos (punteros). El almacenamiento remoto está restringido.
+
+Para reproducir los experimentos, es necesario solicitar acceso a los autores. Si eres un colaborador autorizado, configura tus credenciales de Google Drive:
 
 ```bash
 # Configurar credenciales locales (no se suben al repo, se adjuntan en el trabajo)
@@ -69,6 +72,8 @@ dvc remote modify --local proyecto_multimodal gdrive_client_secret "<gdrive_clie
 # Descargar datos
 uv run dvc pull
 ```
+
+**Nota:** En el futuro, se publicará una versión del dataset libre de derechos que incluirá únicamente los embeddings pre-calculados y features extraídos.
 
 ### 4. Variables de Entorno
 
