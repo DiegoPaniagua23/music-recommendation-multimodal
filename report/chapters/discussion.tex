@@ -1,0 +1,19 @@
+
+% Discusión
+\section{Discusión}
+\label{sec:discusion}
+
+\subsection{Interpretación de Resultados}
+Los resultados obtenidos (Recall@10: 0.6225, NDCG@10: 0.5478) validan la eficacia de la arquitectura \textit{Two-Tower} multimodal propuesta. El valor de Recall@10 indica que el modelo logra identificar una proporción significativa de ítems relevantes dentro de las primeras 10 recomendaciones, mitigando el problema de \textit{cold-start} al no depender exclusivamente de interacciones históricas.
+
+Por otro lado, los valores de NDCG destacan la capacidad del modelo para priorizar ítems relevantes en posiciones superiores. Sin embargo, la diferencia entre Recall y NDCG sugiere que, aunque el modelo recupera ítems relevantes, existe margen de mejora en el ordenamiento fino de las recomendaciones. La integración de audio, texto e imágenes enriquece la representación latente, permitiendo inferir similitudes semánticas y estéticas que serían invisibles para modelos unimodales.
+
+\subsection{Comparación y Limitaciones}
+A diferencia del filtrado colaborativo tradicional, nuestro enfoque aprovecha el contenido denso. El uso de DeBERTa y ResNet permite capturar la semántica compleja de las canciones. Sin embargo, existen limitaciones importantes:
+
+\begin{itemize}
+    \item \textbf{Costo Computacional}: El procesamiento simultáneo de cuatro modalidades, especialmente el uso de Transformers (DeBERTa) y CNNs (ResNet), impone una carga computacional significativa tanto en entrenamiento como en inferencia. Aunque la arquitectura \textit{Two-Tower} permite pre-calcular los embeddings de ítems, la actualización del modelo requiere recursos de hardware considerables (GPUs).
+    \item \textbf{Calidad y Disponibilidad de Datos}: La dependencia de metadatos completos es un desafío. En nuestro dataset, el 15\% de las canciones carecían de letras, lo que obligó al uso de tokens de relleno. Además, la calidad de los audios de YouTube y las imágenes de Spotify puede variar, introduciendo ruido en las representaciones latentes.
+    \item \textbf{Sesgo de Popularidad}: Como es común en sistemas de recomendación entrenados con datos de interacción implícita, el modelo puede tender a favorecer ítems populares sobre los de nicho (\textit{long-tail}), a menos que se apliquen técnicas específicas de des-sesgo.
+\end{itemize}
+

@@ -1,0 +1,53 @@
+% Planeación
+\section{Gestión y Planeación}
+
+\subsection{Matriz RACI}
+Se asignaron responsabilidades específicas a los integrantes del equipo: César Aguirre (C), Gustavo Hernández (G) y Diego Paniagua (D), para optimizar la colaboración y asegurar el cumplimiento de los objetivos del proyecto. Cada integrante asumió roles de liderazgo en diferentes etapas, manteniendo una comunicación constante. La matriz de asignación de responsabilidades (RACI) se detalla en la Tabla \ref{tab:raci}.
+
+\begin{table}[htbp]
+\caption{Matriz RACI del Proyecto (R: Responsable, A: Aprobador, C: Consultado, I: Informado)}
+\label{tab:raci}
+\centering
+\begin{tabular}{|l|c|c|c|}
+\hline
+\textbf{Actividad} & \textbf{César (C)} & \textbf{Gustavo (G)} & \textbf{Diego (D)} \\ \hline
+Recolección de Datos (APIs) & R & C & C \\ \hline
+Preprocesamiento Multimodal & C & R & I \\ \hline
+Diseño de Arquitectura Two-Tower & C & C & R \\ \hline
+Implementación del Modelo (InfoNCE) & R & C & I \\ \hline
+Entrenamiento y Ajuste & I & R & C \\ \hline
+Evaluación de Métricas & C & I & R \\ \hline
+Redacción del Reporte Técnico & R/A & R/A & R/A \\ \hline
+\end{tabular}
+\end{table}
+
+\subsection{Estructura de Desglose del Trabajo (WBS)}
+\begin{itemize}
+    \item \textbf{1. Datos}: extracción (Last.fm, YouTube, Genius, Spotify) y preprocesamiento (Mel-spectrograms, embeddings).
+    \item \textbf{2. Modelado}: codificadores unimodales (ResNet, mDeBERTa), arquitectura Two-Tower y Late Fusion.
+    \item \textbf{3. Evaluación}: métricas (Recall@k, NDCG@k) y experimentos.
+    \item \textbf{4. Entrega}: reporte y código.
+\end{itemize}
+
+\subsection{Ruta Crítica}
+Las tareas críticas fueron: 1) sincronización de datos multimodales, 2) pre-cómputo de características, 3) entrenamiento del modelo Two-Tower con fusión tardía.
+
+\subsection{Infraestructura y Flujo de Trabajo}
+El flujo de trabajo se estructura en tres pilares fundamentales para garantizar la reproducibilidad y la colaboración eficiente: gestión de dependencias, control de versiones de código y control de versiones de datos.
+
+\subsubsection{Gestión de Dependencias: uv}
+Para garantizar la consistencia entre los entornos de desarrollo, se utiliza \textbf{uv} como gestor de paquetes. Esta herramienta, escrita en Rust, destaca por su velocidad y permite asegurar que todos los miembros del equipo utilicen exactamente las mismas versiones de las librerías, eliminando conflictos de compatibilidad y gestionando la versión de Python del proyecto automáticamente.
+
+\subsubsection{Control de Versiones: Git y GitHub}
+El manejo del código fuente se realiza mediante una estrategia de ramificación \textit{Gitflow} simplificada, integrando un motor local (Git) y una plataforma en la nube (GitHub).
+\begin{itemize}
+    \item \textbf{Estrategia de Ramas}: se utiliza \texttt{main} para producción, \texttt{develop} para integración y ramas \texttt{feat/...} para el desarrollo de nuevas características.
+    \item \textbf{Alcance}: Git gestiona exclusivamente archivos ligeros de código y configuración (\texttt{.py}, \texttt{.md}, \texttt{.yaml}, \texttt{.ipynb}).
+\end{itemize}
+
+\subsubsection{Gestión de Datos: DVC}
+Dado que Git no es adecuado para archivos binarios pesados, se implementó \textbf{DVC (Data Version Control)} con almacenamiento remoto en Google Drive.
+\begin{itemize}
+    \item \textbf{Almacenamiento Híbrido}: Git almacena punteros ligeros (\texttt{.dvc}), mientras que los archivos reales (audios, imágenes) residen en la nube.
+    \item \textbf{Reproducibilidad}: vincula versiones exactas del código con versiones exactas de los datos, permitiendo replicar experimentos con precisión.
+\end{itemize}

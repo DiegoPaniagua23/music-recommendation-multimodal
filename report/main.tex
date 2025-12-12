@@ -1,0 +1,90 @@
+\documentclass{ceurart}
+
+%% One can fix some overfulls
+\sloppy
+
+%% Minted listings support
+%% Need pygment <http://pygments.org/> <http://pypi.python.org/pypi/Pygments>
+\usepackage{listings}
+%% auto break lines
+\lstset{breaklines=true}
+
+\usepackage{float}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{amsmath}
+\usepackage{standalone}
+\usepackage{tikz}
+\usepackage[most]{tcolorbox}
+\usepackage{fontawesome5}
+\usetikzlibrary{shapes, arrows.meta, positioning, calc, shadows.blur, backgrounds, fit}
+
+% Definición de colores para item_tower.tex
+\definecolor{paperBlue}{RGB}{70, 130, 180}   % SteelBlue para Audio
+\definecolor{paperRed}{RGB}{205, 92, 92}     % IndianRed para Visual
+\definecolor{paperGreen}{RGB}{60, 179, 113}  % MediumSeaGreen para Texto
+\definecolor{paperOrange}{RGB}{255, 165, 0}  % Orange para Tabular
+\definecolor{paperGray}{RGB}{119, 136, 153}  % LightSlateGray para Fusion
+\definecolor{loraGold}{RGB}{218, 165, 32}    % GoldenRod para LoRA
+\definecolor{paperPurple}{RGB}{147, 112, 219} % MediumPurple para Sequence/Transformer
+
+% Definición de colores para two-towers.tex
+\definecolor{userPurple}{RGB}{147, 112, 219}
+\definecolor{itemBlue}{RGB}{70, 130, 180}
+\definecolor{itemRed}{RGB}{205, 92, 92}
+\definecolor{itemGreen}{RGB}{60, 179, 113}
+\definecolor{itemOrange}{RGB}{255, 165, 0}
+\definecolor{fusionGray}{RGB}{119, 136, 153}
+\definecolor{bgGray}{RGB}{250, 250, 250}
+
+\begin{document}
+
+\copyrightyear{2025}
+\copyrightclause{Copyright for this paper by its authors.
+  Use permitted under Creative Commons License Attribution 4.0
+  International (CC BY 4.0).}
+
+
+
+\title{Arquitectura Two-Tower Multimodal para Recomendación Musical Secuencial: Fusión de Audio, Texto e Imagen mediante Aprendizaje Contrastivo (InfoNCE)}
+
+\author{César Aguirre-Calzadilla}[
+email=cesar.aguirre@cimat.mx,
+]\fnmark[1]
+
+\author{Gustavo Hernández-Angeles}[
+email=gustavo.hernandez@cimat.mx,
+]\fnmark[1]
+
+\author{Diego Paniagua-Molina}[
+email=diego.paniagua@cimat.mx,
+]\fnmark[1]
+
+\address{Mathematics Research Center (CIMAT—Centro de Investigación en Matemáticas), Graduate Program in Statistical Computing, Nuevo León, Mexico}
+
+\fntext[1]{Estos autores contribuyeron de igual manera.}
+
+\begin{abstract}
+Este trabajo presenta una arquitectura multimodal tipo \textit{Two-Tower} para la recomendación secuencial de música, diseñada para mitigar el problema de arranque en frío y enriquecer la representación latente de los ítems. El modelo integra cuatro modalidades: audio (espectrogramas Mel procesados con ResNet-18), texto (letras codificadas con mDeBERTa y LoRA), imágenes (carátulas procesadas con ResNet-18 preentrenada) y metadatos tabulares. Utilizando un dataset \textit{ad-hoc} de 10,000 canciones y 3 millones de interacciones de Last.fm, Spotify y YouTube, empleamos una estrategia de fusión tardía y una función de pérdida \textit{Triplet Loss} para optimizar el espacio métrico compartido. Los resultados experimentales muestran un Recall@10 de 0.6225 y un NDCG@10 de 0.5478, superando a los enfoques unimodales y validando la eficacia de la fusión de información heterogénea para capturar la semántica compleja de la experiencia musical.
+\end{abstract}
+
+\begin{keywords}
+  Sistemas de Recomendación \sep Aprendizaje Multimodal \sep Two-Tower \sep Fusión Tardía \sep Procesamiento de Audio \sep NLP \sep Visión por Computadora
+\end{keywords}
+
+\conference{}
+\maketitle
+
+\input{chapters/introduction}
+\input{chapters/planning}
+\input{chapters/triz}
+\input{chapters/related_work}
+\input{chapters/dataset}
+\input{chapters/model}
+\input{chapters/results}
+\input{chapters/discussion}
+\input{chapters/conclusions}
+
+\bibliography{references}
+
+\end{document}

@@ -9,7 +9,7 @@ from pathlib import Path
 # Add src to python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
-from src.dataset import MultimodalDataset
+from src.data.dataset import MultimodalDataset
 
 def test_dataset():
     print("=== Testing MultimodalDataset Loading ===")

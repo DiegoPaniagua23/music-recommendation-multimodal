@@ -1,0 +1,57 @@
+% Resultados
+\section{Resultados}
+\label{sec:resultados}
+
+En esta sección se presentan los resultados obtenidos durante la evaluación del modelo propuesto. Las métricas utilizadas para medir el desempeño incluyen Recall@$k$ y NDCG@$k$, donde $k$ representa el número de ítems recomendados considerados.
+
+\subsection{Resultados Globales}
+
+Los resultados globales del modelo se resumen en la Tabla~\ref{tab:resultados-globales}.
+
+\begin{table}[htbp]
+    \centering
+    \caption{Resultados globales de evaluación del modelo.}
+    \label{tab:resultados-globales}
+    \begin{tabular}{@{}cccc@{}}
+        \toprule
+        \textbf{Métrica} & \textbf{@10} & \textbf{@20} & \textbf{@50} \\
+        \midrule
+        Recall & 0.6225 & 0.6474 & 0.6757 \\
+        NDCG   & 0.5478 & 0.5541 & 0.5597 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+Los valores obtenidos indican que el modelo logra un desempeño competitivo. Un Recall@10 de 0.6225 significa que, en promedio, el ítem objetivo (la siguiente canción que el usuario escuchó realmente) aparece en el top-10 de recomendaciones el 62.25\% de las veces. Considerando que el espacio de búsqueda es de 10,000 ítems, este resultado es altamente significativo y valida la capacidad del modelo para reducir drásticamente el espacio de búsqueda hacia candidatos relevantes.
+
+Por otro lado, el NDCG@10 de 0.5478 sugiere que, cuando el modelo acierta, tiende a colocar el ítem correcto en posiciones altas de la lista, aunque existe margen de mejora en el ordenamiento fino. La consistencia de las métricas a medida que aumenta $k$ (@20, @50) demuestra la robustez del sistema.
+
+\input{chapters/qualitative_analysis}
+
+\subsection{Definición de Métricas}
+
+Para interpretar adecuadamente los resultados obtenidos, es fundamental comprender las métricas utilizadas en la evaluación del modelo: Recall y NDCG.
+
+\paragraph{Recall} Esta métrica mide la proporción de ítems relevantes que el sistema de recomendación logra recuperar dentro de un conjunto de $k$ recomendaciones. Matemáticamente, se define como:
+\begin{equation}
+    \text{Recall@k} = \frac{|\text{Ítems relevantes} \cap \text{Ítems recomendados}@k|}{|\text{Ítems relevantes}|}.
+\end{equation}
+Un valor alto de Recall indica que el modelo es efectivo en identificar ítems relevantes, lo cual es crucial en aplicaciones donde la cobertura de las recomendaciones es prioritaria.
+
+\paragraph{NDCG (Normalized Discounted Cumulative Gain)} Esta métrica evalúa no solo si los ítems relevantes están presentes en las recomendaciones, sino también su posición dentro de la lista. Dado que los usuarios tienden a interactuar más con los ítems ubicados en las primeras posiciones, NDCG asigna mayores pesos a los ítems relevantes que aparecen al inicio. Se calcula como:
+\begin{equation}
+    \text{NDCG@k} = \frac{1}{Z_k} \sum_{i=1}^k \frac{2^{\text{relevancia}_i} - 1}{\log_2(i+1)},
+\end{equation}
+donde $Z_k$ es un factor de normalización que asegura que el valor máximo de NDCG sea 1. Un NDCG alto refleja que el modelo no solo recupera ítems relevantes, sino que también los ordena de manera óptima.
+
+Estas métricas, en conjunto, proporcionan una visión integral del desempeño del modelo, evaluando tanto su capacidad de recuperación como la calidad del ordenamiento de las recomendaciones.
+
+\subsection{Justificación de las Métricas}
+
+Las métricas Recall y NDCG fueron seleccionadas debido a su relevancia en el contexto de los sistemas de recomendación. Estas métricas permiten evaluar tanto la capacidad del modelo para recuperar ítems relevantes como la calidad del ordenamiento de las recomendaciones, aspectos fundamentales para garantizar una experiencia de usuario satisfactoria.
+
+\paragraph{Recall} En sistemas de recomendación, el Recall es particularmente útil para medir la cobertura de los ítems relevantes. Esto es crucial en aplicaciones donde el objetivo principal es maximizar la exposición de los usuarios a contenido relevante, como en plataformas de música o video bajo demanda. Un alto valor de Recall asegura que el sistema no omita ítems importantes para el usuario.
+
+\paragraph{NDCG} Por otro lado, NDCG complementa al Recall al incorporar la posición de los ítems relevantes dentro de la lista de recomendaciones. Dado que los usuarios tienden a interactuar más con los ítems ubicados en las primeras posiciones, NDCG es una métrica esencial para evaluar la calidad del ordenamiento. Esto es especialmente relevante en escenarios donde la atención del usuario es limitada y las recomendaciones deben ser altamente precisas desde el inicio.
+%%%%%%
+En conjunto, estas métricas proporcionan una evaluación integral del desempeño del modelo, evaluando tanto su capacidad de recuperación como la calidad del ordenamiento de las recomendaciones. Su uso está ampliamente respaldado en la literatura sobre sistemas de recomendación, lo que refuerza su validez en este trabajo.
