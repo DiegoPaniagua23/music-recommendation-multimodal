@@ -48,6 +48,29 @@ Ambas torres proyectan sus entradas a vectores de dimensión $d=256$. Un paso cr
     \text{sim}(\mathbf{u}, \mathbf{i}) = \frac{\mathbf{u} \cdot \mathbf{i}}{\|\mathbf{u}\| \|\mathbf{i}\|} = \mathbf{u} \cdot \mathbf{i} \quad (\text{si } \|\mathbf{u}\|=\|\mathbf{i}\|=1)
 \end{equation}
 
+\subsection{Entrenamiento e Implementación}
+
+\subsubsection{Función de Pérdida (InfoNCE)}
+Para optimizar el espacio latente, utilizamos la función de pérdida InfoNCE (\textit{Noise Contrastive Estimation}), que maximiza la similitud entre pares positivos (usuario, ítem interactuado) y la minimiza con respecto a pares negativos (otros ítems en el mismo lote). Dado un lote de $N$ pares positivos $\{(\mathbf{u}_k, \mathbf{i}_k)\}_{k=1}^N$, la pérdida para el $k$-ésimo par se define como:
+\begin{equation}
+    \mathcal{L}_k = -\log \frac{\exp(\text{sim}(\mathbf{u}_k, \mathbf{i}_k) / \tau)}{\sum_{j=1}^N \exp(\text{sim}(\mathbf{u}_k, \mathbf{i}_j) / \tau)}
+\end{equation}
+donde $\tau$ es un hiperparámetro de temperatura (fijado en 0.07) que controla la suavidad de la distribución de probabilidad. Esta formulación permite un entrenamiento eficiente utilizando los otros elementos del lote como negativos implícitos (\textit{in-batch negatives}).
+
+\subsubsection{Configuración Experimental}
+El modelo fue implementado en PyTorch y entrenado en un clúster de computación de alto rendimiento (HPC) utilizando la biblioteca \texttt{uv} para la gestión de dependencias y entornos.
+\begin{itemize}
+    \item \textbf{Hardware}: Entrenamiento distribuido en múltiples GPUs (Distributed Data Parallel - DDP) para acelerar el proceso y manejar lotes más grandes.
+    \item \textbf{Hiperparámetros}:
+    \begin{itemize}
+        \item \textbf{Optimizador}: AdamW con una tasa de aprendizaje inicial de $1 \times 10^{-4}$.
+        \item \textbf{Batch Size}: 64 por GPU.
+        \item \textbf{Epochs}: 10 épocas completas.
+        \item \textbf{Mixed Precision}: Se utilizó precisión mixta automática (AMP) para reducir el uso de memoria y acelerar el cómputo.
+    \end{itemize}
+    \item \textbf{Estrategia de Validación}: Se empleó una métrica de Recall@10 calculada sobre el conjunto de validación al final de cada época para monitorear el rendimiento y guardar el mejor modelo (\textit{checkpointing}).
+\end{itemize}
+
 \paragraph{Función de Pérdida InfoNCE Simétrica}
 Para el entrenamiento, utilizamos la función de pérdida InfoNCE (Information Noise Contrastive Estimation), adaptada para considerar la simetría entre usuarios e ítems (similar a CLIP). Dado un lote de tamaño $B$, calculamos la matriz de logits escalada por una temperatura aprendible $\tau$ (inicializada en 0.07):
 \begin{equation}

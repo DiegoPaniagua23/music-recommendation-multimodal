@@ -1,7 +1,7 @@
 % Introducción
 \section{Introducción}
 
-La proliferación de plataformas de \textit{streaming} musical ha transformado radicalmente el acceso a la música, generando catálogos que superan las decenas de millones de pistas. En este contexto de sobrecarga de información, los sistemas de recomendación (RS) se han convertido en herramientas indispensables para filtrar contenido y personalizar la experiencia del usuario. Tradicionalmente, estos sistemas han dependido en gran medida del filtrado colaborativo (CF), que infiere preferencias basándose en patrones de interacción históricos \citep{koren2009matrix}. Sin embargo, los enfoques puramente colaborativos enfrentan limitaciones inherentes, notablemente el problema de arranque en frío (\textit{cold-start}), donde el sistema es incapaz de recomendar ítems nuevos o a usuarios nuevos debido a la ausencia de interacciones previas.
+La proliferación de plataformas de \textit{streaming} musical ha transformado radicalmente el acceso a la música, generando catálogos que superan las decenas de millones de pistas. En este contexto de sobrecarga de información, los sistemas de recomendación (RS) se han convertido en herramientas indispensables para filtrar contenido y personalizar la experiencia del usuario. Tradicionalmente, estos sistemas han dependido en gran medida del filtrado colaborativo (CF), que infiere preferencias basándose en patrones de interacción históricos \citep{koren2009matrix}. Sin embargo, los enfoques puramente colaborativos enfrentan limitaciones inherentes, notablemente el problema de arranque en frío (\textit{cold-start}), donde el sistema es incapaz de recomendar ítems nuevos o a usuarios nuevos debido a la ausencia de interacciones previas. Además, la música es una experiencia altamente contextual y subjetiva, donde factores como el estado de ánimo, el género y las características acústicas juegan un papel crucial que el CF puro a menudo ignora.
 
 En la industria actual, la arquitectura predominante para la recuperación eficiente de ítems en catálogos masivos es el enfoque \textit{Two-Tower}, popularizado por YouTube \citep{covington2016deep} y perfeccionado por Google \citep{yi2019sampling}. Para el modelado de preferencias de usuario, los enfoques secuenciales basados en auto-atención, como SASRec \citep{kang2018self}, han demostrado superar a los métodos tradicionales, capturando la evolución dinámica de intereses similar a lo observado en plataformas como TikTok o Alibaba \citep{zhou2018deep}. Sin embargo, en el dominio musical, el problema de arranque en frío persiste. Inspirados por los trabajos pioneros de Spotify en el uso de redes convolucionales sobre espectrogramas de audio \citep{vanden2013deep}, nuestra propuesta integra estas técnicas en un marco multimodal.
 
@@ -13,8 +13,14 @@ Este trabajo presenta un sistema de recomendación musical multimodal diseñado 
 Las principales contribuciones de este trabajo son las siguientes:
 \begin{itemize}
     \item \textbf{Construcción de un Dataset Multimodal}: Desarrollamos un conjunto de datos \textit{ad-hoc} que vincula interacciones de usuarios de Last.fm con señales de audio (YouTube), letras (Genius), imágenes de portadas (Spotify) y metadatos estructurados, creando un recurso unificado para la investigación en recomendación multimodal.
-    \item \textbf{Arquitectura Two-Tower Multimodal}: Proponemos una arquitectura de red neuronal de dos torres (\textit{Two-Tower}) que desacopla la codificación del usuario y del ítem. La torre del ítem implementa una estrategia de fusión tardía (\textit{Late Fusion}), integrando embeddings provenientes de codificadores especializados (ResNet-18 para audio e imagen, mDeBERTa-v3 con adaptadores LoRA para texto, y MLPs para datos tabulares).
-    \item \textbf{Evaluación Integral}: Evaluamos el desempeño del modelo utilizando métricas de ranking estándar (Recall@$k$, NDCG@$k$) y demostramos la efectividad del enfoque propuesto en un escenario de recomendación realista.
+    \item \textbf{Arquitectura Two-Tower Multimodal}: Proponemos una arquitectura de red neuronal de dos torres (\textit{Two-Tower}) que desacopla la codificación del usuario y del ítem. La torre del ítem implementa una estrategia de fusión tardía (\textit{Late Fusion}), integrando embeddings provenientes de codificadores especializados:
+    \begin{itemize}
+        \item \textbf{Audio}: ResNet-18 modificada para procesar espectrogramas Mel de un solo canal.
+        \item \textbf{Imagen}: ResNet-18 preentrenada en ImageNet para extraer características visuales de las portadas.
+        \item \textbf{Texto}: Modelo de lenguaje mDeBERTa-v3-base optimizado eficientemente mediante Low-Rank Adaptation (LoRA).
+        \item \textbf{Tabular}: Perceptrones multicapa (MLP) para procesar metadatos numéricos y categóricos.
+    \end{itemize}
+    \item \textbf{Evaluación Integral}: Evaluamos el desempeño del modelo utilizando métricas de ranking estándar (Recall@$k$, NDCG@$k$) y demostramos la efectividad del enfoque propuesto en un escenario de recomendación realista, superando a las líneas base unimodales.
 \end{itemize}
 
 \subsection{Organización del Documento}

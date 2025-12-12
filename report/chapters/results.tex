@@ -22,7 +22,9 @@ Los resultados globales del modelo se resumen en la Tabla~\ref{tab:resultados-gl
     \end{tabular}
 \end{table}
 
-Los valores obtenidos indican que el modelo logra un desempeño competitivo, especialmente en términos de Recall y NDCG, lo que sugiere que las recomendaciones generadas son relevantes y están bien ordenadas en las primeras posiciones.
+Los valores obtenidos indican que el modelo logra un desempeño competitivo. Un Recall@10 de 0.6225 significa que, en promedio, el ítem objetivo (la siguiente canción que el usuario escuchó realmente) aparece en el top-10 de recomendaciones el 62.25\% de las veces. Considerando que el espacio de búsqueda es de 10,000 ítems, este resultado es altamente significativo y valida la capacidad del modelo para reducir drásticamente el espacio de búsqueda hacia candidatos relevantes.
+
+Por otro lado, el NDCG@10 de 0.5478 sugiere que, cuando el modelo acierta, tiende a colocar el ítem correcto en posiciones altas de la lista, aunque existe margen de mejora en el ordenamiento fino. La consistencia de las métricas a medida que aumenta $k$ (@20, @50) demuestra la robustez del sistema.
 
 \input{chapters/qualitative_analysis}
 
