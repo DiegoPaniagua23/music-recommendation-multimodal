@@ -95,7 +95,6 @@ config/youtube_cookies.txt
 !report/Out/main.pdf
 
 # Exceptions: Allow resource PDFs (papers, static figures)
-!papers/*.pdf
 !report/mir_reporte/imagenes/*.pdf
 !data/**/*.pdf
 
