@@ -57,7 +57,7 @@ Actualmente existen múltiples ramas de características (`feat/*`). Para una pr
 
 ## 5. Plan de Acción Sugerido
 
-1.  [ ] **Git:** Fusionar ramas pendientes a `develop` y borrar ramas obsoletas.
-2.  [ ] **Limpieza:** Organizar la carpeta `notebooks/` y verificar `.gitignore`.
+1.  [x] **Git:** Fusionar ramas pendientes a `develop` y borrar ramas obsoletas.
+2.  [x] **Limpieza:** Organizar la carpeta `notebooks/` y verificar `.gitignore`.
 3.  [ ] **Documentación:** Actualizar `README.md` con instrucciones de uso de los scripts en `src/`.
 4.  [ ] **Reporte:** Continuar con la redacción en `Reporte/`.
