@@ -1,0 +1,13 @@
+
+% Discusión
+\section{Discusión}
+\label{sec:discusion}
+
+\subsection{Interpretación de Resultados}
+Los resultados obtenidos (Recall@10: 0.6225, NDCG@10: 0.5478) validan la eficacia de la arquitectura \textit{Two-Tower} multimodal propuesta. El valor de Recall@10 indica que el modelo logra identificar una proporción significativa de ítems relevantes dentro de las primeras 10 recomendaciones, mitigando el problema de \textit{cold-start} al no depender exclusivamente de interacciones históricas.
+
+Por otro lado, los valores de NDCG destacan la capacidad del modelo para priorizar ítems relevantes en posiciones superiores. Sin embargo, la diferencia entre Recall y NDCG sugiere que, aunque el modelo recupera ítems relevantes, existe margen de mejora en el ordenamiento fino de las recomendaciones. La integración de audio, texto e imágenes enriquece la representación latente, permitiendo inferir similitudes semánticas y estéticas que serían invisibles para modelos unimodales.
+
+\subsection{Comparación y Limitaciones}
+A diferencia del filtrado colaborativo tradicional, nuestro enfoque aprovecha el contenido denso. El uso de DeBERTa y ResNet permite capturar la semántica compleja de las canciones. Sin embargo, la complejidad computacional de procesar cuatro modalidades simultáneamente impone restricciones de hardware. Además, la dependencia de metadatos completos (letras, carátulas) puede introducir ruido si estos faltan.
+

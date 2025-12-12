@@ -1,0 +1,27 @@
+% Conclusiones
+\section{Conclusiones y Trabajo Futuro}
+\label{sec:conclusiones}
+
+En este trabajo se presentó el diseño, implementación y evaluación de un sistema de recomendación musical multimodal basado en una arquitectura \textit{Two-Tower} con estrategia de \textit{Late Fusion}. El objetivo principal fue mitigar las limitaciones de los enfoques colaborativos tradicionales mediante la integración de información rica de contenido: audio, texto (letras), imágenes (portadas) y metadatos tabulares.
+
+\subsection{Síntesis de Hallazgos}
+Los resultados experimentales validan la hipótesis de que la integración de múltiples modalidades permite construir representaciones de ítems más robustas y semánticamente significativas. El modelo alcanzó un Recall@10 de 0.6225 y un NDCG@10 de 0.5478, demostrando una capacidad competente para recuperar y ordenar ítems relevantes en un espacio de búsqueda denso. La estrategia de fusión tardía demostró ser efectiva para combinar embeddings provenientes de codificadores heterogéneos (ResNet-18, mDeBERTa, MLP) sin incurrir en costos computacionales prohibitivos durante el entrenamiento.
+
+\subsection{Contribuciones Principales}
+Las contribuciones más destacadas de esta investigación incluyen:
+\begin{itemize}
+    \item \textbf{Dataset Multimodal Unificado}: la creación de un conjunto de datos curado que vincula interacciones de usuario con tres modalidades de contenido no estructurado (audio, texto, imagen), un recurso valioso para la comunidad de investigación en MIR (\textit{Music Information Retrieval}).
+    \item \textbf{Arquitectura Eficiente}: la implementación de una arquitectura modular que utiliza técnicas de eficiencia como LoRA y pre-cómputo de características, alineada con los principios de la metodología TRIZ para resolver la contradicción entre precisión y costo computacional.
+    \item \textbf{Validación de Fusión Tardía}: la demostración empírica de que la fusión de características de alto nivel en la etapa final de la torre del ítem es suficiente para capturar la sinergia entre modalidades en el dominio musical.
+\end{itemize}
+
+\subsection{Trabajo Futuro}
+A pesar de los resultados prometedores, existen varias líneas de investigación abiertas para mejorar el sistema:
+\begin{itemize}
+    \item \textbf{Mecanismos de Atención Dinámica}: implementar mecanismos de atención a nivel de modalidad (\textit{Modality-level Attention}) que permitan al modelo ponderar dinámicamente la importancia de cada fuente de información para cada canción o usuario específico.
+    \item \textbf{Evaluación en Cold-Start Estricto}: realizar pruebas específicas con ítems y usuarios completamente nuevos para cuantificar con mayor precisión la ganancia en escenarios de arranque en frío puro.
+    \item \textbf{Escalabilidad del Dataset}: ampliar el conjunto de datos más allá de las 10,000 canciones para evaluar la capacidad de generalización del modelo en catálogos de escala industrial.
+    \item \textbf{Inferencia en Tiempo Real}: optimizar el pipeline de inferencia mediante la cuantización de modelos y el uso de bases de datos vectoriales para la recuperación de vecinos más cercanos (ANN).
+\end{itemize}
+
+En conclusión, este proyecto sienta las bases para sistemas de recomendación más holísticos que `escuchan', `leen' y `ven' la música, acercándose más a la forma en que los humanos experimentan y descubren el arte.

@@ -1,0 +1,15 @@
+% TRIZ
+\section{Metodología TRIZ}
+
+Se aplicó TRIZ para resolver la contradicción entre precisión del modelo y costo computacional.
+
+\subsection{Contradicción y Principios}
+Buscamos aumentar la complejidad semántica (multimodalidad) sin hacer inviable el entrenamiento. Se aplicaron los siguientes principios:
+\begin{itemize}
+    \item \textbf{Acción Preliminar}: pre-cómputo de espectrogramas y embeddings textuales para reducir carga en tiempo real.
+    \item \textbf{Calidad Local}: codificadores especializados (ResNet, mDeBERTa) optimizados para cada modalidad.
+    \item \textbf{Fusión}: estrategia de \textit{Late Fusion} para integrar representaciones de alto nivel.
+    \item \textbf{Cambio de Parámetros}: uso de LoRA para adaptar modelos de lenguaje grandes con pocos recursos.
+\end{itemize}
+
+Esta metodología validó el diseño de una arquitectura eficiente y potente.
