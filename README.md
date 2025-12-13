@@ -8,11 +8,11 @@
 
 ## 📖 Descripción General
 
-Este proyecto implementa un sistema de recomendación musical del Estado del Arte (SOTA) utilizando una arquitectura **Two-Tower** con fusión **Cross-Modal**. El objetivo es resolver los problemas de escasez de datos (*sparsity*) y brecha semántica (*semantic gap*) en los sistemas tradicionales.
+Este proyecto implementa un sistema de recomendación musical del Estado del Arte (SOTA) utilizando una arquitectura **Two-Tower** con **Late Fusion**. El objetivo es resolver los problemas de escasez de datos (*sparsity*) y brecha semántica (*semantic gap*) en los sistemas tradicionales.
 
 El modelo alinea dos espacios vectoriales:
 1.  **User Tower:** Codifica la secuencia histórica de interacciones del usuario usando **SASRec** (Transformer secuencial).
-2.  **Item Tower:** Codifica el contenido de la canción mediante **Atención Cruzada (Cross-Attention)** entre Audio (Mel-Spectrograms), Texto (Lyrics) e Imagen (Carátulas).
+2.  **Item Tower:** Codifica el contenido de la canción mediante **Concatenación y Proyección (Late Fusion)** de Audio (Mel-Spectrograms), Texto (Lyrics), Imagen (Carátulas) y Metadatos.
 
 ## 🏗️ Arquitectura del Sistema
 
@@ -21,17 +21,18 @@ El modelo alinea dos espacios vectoriales:
 El sistema se basa en una arquitectura **Two-Tower** que aprende representaciones vectoriales (embeddings) tanto para usuarios como para ítems en un espacio métrico compartido.
 
 ### 1. User Tower (Secuencial)
-- **Entrada:** Secuencia histórica de interacciones del usuario (IDs de canciones).
+- **Entrada:** Secuencia histórica de interacciones del usuario (IDs de canciones) y atributos demográficos (Género, País).
 - **Modelo:** **SASRec** (Self-Attention Sequential Recommendation).
-- **Funcionamiento:** Utiliza mecanismos de auto-atención para capturar dependencias a largo y corto plazo en las preferencias del usuario.
+- **Funcionamiento:** Utiliza mecanismos de auto-atención para capturar dependencias a largo y corto plazo en las preferencias del usuario, integrando información demográfica mediante concatenación.
 
 ### 2. Item Tower (Multimodal)
-- **Entrada:** Audio, Texto (Letras) e Imágenes (Carátulas).
+- **Entrada:** Audio, Texto (Letras), Imágenes (Carátulas) y Metadatos Tabulares.
 - **Codificadores:**
     - **Audio:** ResNet-18 procesando Mel-Spectrograms.
     - **Texto:** mDeBERTa (con adaptadores LoRA) para procesar letras multilingües.
     - **Imagen:** ResNet-18 pre-entrenada en ImageNet.
-- **Fusión:** Mecanismo de **Cross-Attention** que permite a las modalidades interactuar y ponderar su importancia dinámicamente.
+    - **Tabular:** MLP para procesar características numéricas y categóricas.
+- **Fusión:** Estrategia de **Late Fusion** que concatena los embeddings de cada modalidad y los proyecta a un espacio común mediante un MLP.
 
 ### 3. Entrenamiento
 - **Función de Pérdida:** **InfoNCE** (Contrastive Loss).
