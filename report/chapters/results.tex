@@ -4,6 +4,16 @@
 
 En esta sección se presentan los resultados obtenidos durante la evaluación del modelo propuesto. Las métricas utilizadas para medir el desempeño incluyen Recall@$k$ y NDCG@$k$, donde $k$ representa el número de ítems recomendados considerados.
 
+\subsection{Mecanismo de Inferencia}
+Para la generación de recomendaciones y la evaluación del modelo, se implementó un proceso eficiente de dos etapas que desacopla el cómputo de representaciones:
+
+\begin{enumerate}
+    \item \textbf{Pre-cómputo de Embeddings (Item Tower):} Se procesan todos los ítems del catálogo a través de la \textit{Item Tower} para generar sus representaciones vectoriales estáticas. Estos embeddings se almacenan en un índice o base de datos vectorial, lo que evita re-calcular las características multimodales (audio, texto, imagen) en cada consulta.
+    \item \textbf{Recuperación (User Tower):} Dado un usuario, se procesa su secuencia histórica de interacciones a través de la \textit{User Tower} para obtener su embedding dinámico actual. Posteriormente, se calcula la similitud (producto punto) entre el embedding del usuario y los embeddings de todos los ítems indexados, recuperando los $k$ ítems con mayor puntuación de similitud.
+\end{enumerate}
+
+Este mecanismo permite realizar inferencia con baja latencia, ya que la parte más costosa computacionalmente (el procesamiento multimodal) se realiza \textit{offline}.
+
 \subsection{Resultados Globales}
 
 Los resultados globales del modelo se resumen en la Tabla~\ref{tab:resultados-globales}.
